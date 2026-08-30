@@ -10,7 +10,13 @@ export type DetectorType =
   | "emoji"
   | "file"
   | "zalgo"
-  | "newline";
+  | "newline"
+  | "account"
+  | "length";
+
+export type Locale = "en" | "es";
+
+export type TimeoutScale = "none" | "linear" | "exponential";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
@@ -67,26 +73,20 @@ export interface IgnoreLists {
 }
 
 export interface FloodConfig {
-  /** Activa el detector de flood (muchos mensajes en poco tiempo). */
   enabled: boolean;
-  /** Máximo de mensajes permitidos dentro de la ventana. */
   maxMessages: number;
-  /** Ventana deslizante en milisegundos. */
   windowMs: number;
+  /** If true, only counts messages in the same channel. */
+  sameChannelOnly: boolean;
   severity: Severity;
 }
 
 export interface DuplicateConfig {
-  /** Activa el detector de texto repetido. */
   enabled: boolean;
-  /** Veces que se puede repetir el mismo (o muy similar) mensaje. */
   maxRepeats: number;
   windowMs: number;
-  /**
-   * Umbral 0-1. 1 = solo coincidencia exacta.
-   * 0.85 detecta variaciones leves ("hola!!" vs "hola!").
-   */
   similarity: number;
+  sameChannelOnly: boolean;
   severity: Severity;
 }
 
@@ -114,6 +114,10 @@ export interface LinkConfig {
   customPatterns: string[];
   /** Palabras extra que, junto a un enlace, se consideran phishing. */
   extraPhishingKeywords: string[];
+  /** Max URLs in one message. 0 = unlimited. */
+  maxLinks: number;
+  /** Also scan embed title/description/fields. */
+  scanEmbeds: boolean;
   severity: Severity;
 }
 
@@ -138,6 +142,10 @@ export interface ImageConfig {
    * (raid / copypasta visual). 0 = desactivado.
    */
   crossUserThreshold: number;
+  /** MIME types to skip, e.g. `["image/gif"]`. */
+  skipContentTypes: string[];
+  /** Max image attachments per message. 0 = unlimited. */
+  maxAttachments: number;
   severity: Severity;
 }
 
@@ -146,6 +154,8 @@ export interface MentionConfig {
   maxMentions: number;
   blockEveryone: boolean;
   blockHere: boolean;
+  /** Same user mentioned this many times in one message. 0 = off. */
+  maxRepeatsOfSame: number;
   severity: Severity;
 }
 
@@ -184,10 +194,29 @@ export interface NewlineConfig {
   severity: Severity;
 }
 
+export interface AccountConfig {
+  enabled: boolean;
+  /** Accounts younger than this many days are flagged. */
+  minAgeDays: number;
+  /** Flag users still using the default Discord avatar. */
+  blockDefaultAvatar: boolean;
+  severity: Severity;
+}
+
+export interface LengthConfig {
+  enabled: boolean;
+  maxCharacters: number;
+  severity: Severity;
+}
+
 export interface TimeoutPunishment {
   enabled: boolean;
   durationMs: number;
   minStrikes: number;
+  /** `linear` = base * strikes, `exponential` = base * 2^(strikes-1). */
+  scale: TimeoutScale;
+  /** Cap for scaled timeouts (Discord max is 28 days). */
+  maxDurationMs: number;
 }
 
 export interface BooleanPunishment {
@@ -216,18 +245,24 @@ export interface PunishmentConfig {
    * Evita 4 timeouts seguidos en el mismo burst de flood.
    */
   cooldownMs: number;
-  /** Sigue borrando mensajes mientras dura el cooldown. */
   deleteDuringCooldown: boolean;
+  /** Send the warning as an embed instead of plain text. */
+  warnAsEmbed: boolean;
 }
 
 export interface ResolvedConfig {
   enabled: boolean;
   dryRun: boolean;
+  locale: Locale;
   ignoreBots: boolean;
   ignoreWebhooks: boolean;
   ignoreOwner: boolean;
-  /** Ignora miembros con permiso Administrator. */
   ignoreAdministrators: boolean;
+  /**
+   * Extra permission names that skip checks, e.g. `["ManageMessages", "ModerateMembers"]`.
+   * Uses discord.js `PermissionFlagsBits` keys.
+   */
+  ignorePermissions: string[];
   ignored: IgnoreLists;
   flood: FloodConfig;
   duplicates: DuplicateConfig;
@@ -239,11 +274,17 @@ export interface ResolvedConfig {
   files: FileConfig;
   zalgo: ZalgoConfig;
   newlines: NewlineConfig;
+  accounts: AccountConfig;
+  length: LengthConfig;
   punishment: PunishmentConfig;
-  /** Revisa también ediciones de mensajes. */
   checkEdits: boolean;
-  /** Intervalo de limpieza de memoria. */
   cleanupIntervalMs: number;
+  /** Skip these detectors even if their `enabled` flag is true. */
+  disabledDetectors: DetectorType[];
+  /** Custom run order. Empty = built-in order. */
+  detectorOrder: DetectorType[];
+  /** Per-channel patches keyed by channel snowflake. */
+  channelOverrides: Record<string, DeepPartial<ResolvedConfig>>;
 }
 
 export interface AntiSpamStats {

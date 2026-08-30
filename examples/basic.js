@@ -24,7 +24,9 @@ const client = new Client({
 
 const antispam = new AntiSpam(client, {
   preset: "balanced",
+  locale: "es",
   dryRun: false,
+  ignorePermissions: ["ManageMessages"],
   ignored: {
     roles: ["ID_ROL_STAFF"],
     channels: ["ID_CANAL_BOTS"],
@@ -49,10 +51,15 @@ const antispam = new AntiSpam(client, {
   files: {
     blockedExtensions: ["exe", "bat", "cmd", "scr", "dll", "msi"],
   },
+  accounts: {
+    enabled: false,
+    minAgeDays: 3,
+  },
   punishment: {
     deleteMessage: true,
     warnUser: true,
-    timeout: { enabled: true, durationMs: 60_000, minStrikes: 2 },
+    warnAsEmbed: false,
+    timeout: { enabled: true, durationMs: 60_000, minStrikes: 2, scale: "none" },
     cooldownMs: 8_000,
     deleteDuringCooldown: true,
     logChannelId: null,

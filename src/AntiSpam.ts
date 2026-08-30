@@ -4,12 +4,14 @@ import {
   type Message,
 } from "discord.js";
 import { mergeDeep, resolveConfig } from "./defaults";
+import { accountDetector } from "./detectors/accounts";
 import { capsDetector } from "./detectors/caps";
 import { duplicateDetector } from "./detectors/duplicates";
 import { emojiDetector } from "./detectors/emojis";
 import { fileDetector } from "./detectors/files";
 import { floodDetector } from "./detectors/flood";
 import { createImageDetector } from "./detectors/images";
+import { lengthDetector } from "./detectors/length";
 import { linkDetector } from "./detectors/links";
 import { mentionDetector } from "./detectors/mentions";
 import { newlineDetector } from "./detectors/newlines";
@@ -40,6 +42,8 @@ const DETECTOR_TYPES: DetectorType[] = [
   "file",
   "zalgo",
   "newline",
+  "account",
+  "length",
 ];
 
 const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban"];
@@ -62,6 +66,7 @@ export class AntiSpam {
   private readonly detectors: Detector[];
   private readonly options: AntiSpamOptions;
   private readonly guildConfigs = new Map<string, DeepPartial<ResolvedConfig>>();
+  private readonly channelConfigs = new Map<string, DeepPartial<ResolvedConfig>>();
   private stats = emptyStats();
   private started = false;
   private cleanupTimer: NodeJS.Timeout | null = null;
@@ -89,6 +94,8 @@ export class AntiSpam {
       mentionDetector,
       zalgoDetector,
       newlineDetector,
+      accountDetector,
+      lengthDetector,
       capsDetector,
       emojiDetector,
     ];
@@ -152,6 +159,21 @@ export class AntiSpam {
     this.guildConfigs.delete(guildId);
   }
 
+  getChannelConfig(guildId: string, channelId: string): ResolvedConfig {
+    return structuredClone(this.configFor(guildId, channelId));
+  }
+
+  setChannelConfig(guildId: string, channelId: string, patch: DeepPartial<ResolvedConfig>): ResolvedConfig {
+    const key = `${guildId}:${channelId}`;
+    const previous = this.channelConfigs.get(key) ?? {};
+    this.channelConfigs.set(key, mergeDeep(previous, patch));
+    return this.getChannelConfig(guildId, channelId);
+  }
+
+  clearChannelConfig(guildId: string, channelId: string): void {
+    this.channelConfigs.delete(`${guildId}:${channelId}`);
+  }
+
   getStrikes(guildId: string, userId: string): number {
     return this.store.getStrikes(
       guildId,
@@ -186,7 +208,7 @@ export class AntiSpam {
     if (this.shouldIgnore(message)) return null;
     if (!message.guild) return null;
 
-    const config = this.configFor(message.guild.id);
+    const config = this.configFor(message.guild.id, message.channelId);
     const now = Date.now();
     const snapshot = this.toSnapshot(message, now);
     const history = options.isEdit
@@ -200,9 +222,11 @@ export class AntiSpam {
 
     this.stats.analyzed += 1;
 
-    const detectors = options.isEdit
-      ? this.detectors.filter((detector) => detector.type === "link" || detector.type === "mention")
-      : this.detectors;
+    const detectors = this.orderedDetectors(config).filter((detector) => {
+      if (config.disabledDetectors.includes(detector.type)) return false;
+      if (options.isEdit) return detector.type === "link" || detector.type === "mention";
+      return true;
+    });
 
     for (const detector of detectors) {
       try {
@@ -223,7 +247,7 @@ export class AntiSpam {
   }
 
   private async handle(message: Message, isEdit: boolean): Promise<void> {
-    const config = message.guild ? this.configFor(message.guild.id) : this.config;
+    const config = message.guild ? this.configFor(message.guild.id, message.channelId) : this.config;
     if (!config.enabled) return;
     if (isEdit && !config.checkEdits) return;
     if (this.shouldIgnore(message)) return;
@@ -273,7 +297,7 @@ export class AntiSpam {
   }
 
   shouldIgnore(message: Message): boolean {
-    const config = message.guild ? this.configFor(message.guild.id) : this.config;
+    const config = message.guild ? this.configFor(message.guild.id, message.channelId) : this.config;
 
     if (message.author.bot && config.ignoreBots) return true;
     if (message.webhookId && config.ignoreWebhooks) return true;
@@ -292,6 +316,10 @@ export class AntiSpam {
       if (config.ignoreAdministrators && member.permissions.has(PermissionFlagsBits.Administrator)) {
         return true;
       }
+      for (const name of config.ignorePermissions) {
+        const flag = PermissionFlagsBits[name as keyof typeof PermissionFlagsBits];
+        if (flag && member.permissions.has(flag)) return true;
+      }
       if (config.ignored.roles.some((roleId) => member.roles.cache.has(roleId))) {
         return true;
       }
@@ -300,9 +328,27 @@ export class AntiSpam {
     return false;
   }
 
-  private configFor(guildId: string): ResolvedConfig {
-    const patch = this.guildConfigs.get(guildId);
-    return patch ? mergeDeep(this.config, patch) : this.config;
+  private configFor(guildId: string, channelId?: string): ResolvedConfig {
+    let resolved = this.config;
+    const guildPatch = this.guildConfigs.get(guildId);
+    if (guildPatch) resolved = mergeDeep(resolved, guildPatch);
+    if (channelId && resolved.channelOverrides[channelId]) {
+      resolved = mergeDeep(resolved, resolved.channelOverrides[channelId]);
+    }
+    if (channelId) {
+      const runtime = this.channelConfigs.get(`${guildId}:${channelId}`);
+      if (runtime) resolved = mergeDeep(resolved, runtime);
+    }
+    return resolved;
+  }
+
+  private orderedDetectors(config: ResolvedConfig): Detector[] {
+    if (config.detectorOrder.length === 0) return this.detectors;
+    return [...this.detectors].sort((left, right) => {
+      const leftIndex = config.detectorOrder.indexOf(left.type);
+      const rightIndex = config.detectorOrder.indexOf(right.type);
+      return (leftIndex === -1 ? 999 : leftIndex) - (rightIndex === -1 ? 999 : rightIndex);
+    });
   }
 
   private toSnapshot(message: Message, now: number): MessageSnapshot {

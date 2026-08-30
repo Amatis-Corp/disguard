@@ -7,10 +7,12 @@ import type {
 const BASE: ResolvedConfig = {
   enabled: true,
   dryRun: false,
+  locale: "en",
   ignoreBots: true,
   ignoreWebhooks: true,
   ignoreOwner: true,
   ignoreAdministrators: true,
+  ignorePermissions: [],
   ignored: {
     users: [],
     roles: [],
@@ -22,6 +24,7 @@ const BASE: ResolvedConfig = {
     enabled: true,
     maxMessages: 5,
     windowMs: 4000,
+    sameChannelOnly: false,
     severity: "medium",
   },
   duplicates: {
@@ -29,6 +32,7 @@ const BASE: ResolvedConfig = {
     maxRepeats: 3,
     windowMs: 12_000,
     similarity: 0.9,
+    sameChannelOnly: false,
     severity: "medium",
   },
   links: {
@@ -61,6 +65,8 @@ const BASE: ResolvedConfig = {
     suspiciousTlds: [],
     customPatterns: [],
     extraPhishingKeywords: [],
+    maxLinks: 0,
+    scanEmbeds: true,
     severity: "high",
   },
   images: {
@@ -72,6 +78,8 @@ const BASE: ResolvedConfig = {
     includeStickers: true,
     includeEmbeds: true,
     crossUserThreshold: 0,
+    skipContentTypes: [],
+    maxAttachments: 0,
     severity: "medium",
   },
   mentions: {
@@ -79,6 +87,7 @@ const BASE: ResolvedConfig = {
     maxMentions: 6,
     blockEveryone: true,
     blockHere: true,
+    maxRepeatsOfSame: 0,
     severity: "high",
   },
   caps: {
@@ -120,16 +129,28 @@ const BASE: ResolvedConfig = {
     maxNewlines: 15,
     severity: "low",
   },
+  accounts: {
+    enabled: false,
+    minAgeDays: 3,
+    blockDefaultAvatar: false,
+    severity: "medium",
+  },
+  length: {
+    enabled: false,
+    maxCharacters: 1000,
+    severity: "low",
+  },
   punishment: {
     deleteMessage: true,
     warnUser: true,
     dmUser: false,
-    warnMessage:
-      "{user}, tu mensaje se ha bloqueado: {reason}. Strikes: {strikes}.",
+    warnMessage: "",
     timeout: {
       enabled: true,
       durationMs: 60_000,
       minStrikes: 2,
+      scale: "none",
+      maxDurationMs: 28 * 24 * 60 * 60 * 1000,
     },
     kick: {
       enabled: false,
@@ -144,9 +165,13 @@ const BASE: ResolvedConfig = {
     strikeDecayMs: 15 * 60_000,
     cooldownMs: 8_000,
     deleteDuringCooldown: true,
+    warnAsEmbed: false,
   },
   checkEdits: true,
   cleanupIntervalMs: 60_000,
+  disabledDetectors: [],
+  detectorOrder: [],
+  channelOverrides: {},
 };
 
 const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
@@ -166,6 +191,7 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
     punishment: {
       timeout: { enabled: false, durationMs: 30_000, minStrikes: 3 },
     },
+    locale: "en",
   },
   balanced: {},
   strict: {
@@ -180,10 +206,13 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
     links: {
       blockInvites: true,
       blockShorteners: true,
+      maxLinks: 4,
       severity: "critical",
     },
+    accounts: { enabled: true, minAgeDays: 1 },
+    length: { enabled: true, maxCharacters: 800 },
     punishment: {
-      timeout: { enabled: true, durationMs: 5 * 60_000, minStrikes: 1 },
+      timeout: { enabled: true, durationMs: 5 * 60_000, minStrikes: 1, scale: "linear" },
       kick: { enabled: false, minStrikes: 4 },
     },
   },

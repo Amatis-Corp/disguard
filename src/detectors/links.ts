@@ -30,7 +30,7 @@ export const linkDetector: Detector = {
     const rules = config.links;
     if (!rules.enabled || !message.guild) return null;
 
-    const text = collectMessageText(message);
+    const text = rules.scanEmbeds ? collectMessageText(message) : message.content;
     const urls = extractUrls(text);
 
     for (const pattern of rules.customPatterns) {
@@ -43,6 +43,17 @@ export const linkDetector: Detector = {
     }
 
     if (urls.length === 0) return null;
+
+    if (rules.maxLinks > 0 && urls.length > rules.maxLinks) {
+      return flag(
+        snapshot,
+        message.author.id,
+        message.guild.id,
+        rules.severity,
+        `Demasiados enlaces (${urls.length}/${rules.maxLinks})`,
+        { count: urls.length },
+      );
+    }
 
     for (const url of urls) {
       if (hostMatchesList(url.hostname, rules.allowList)) continue;

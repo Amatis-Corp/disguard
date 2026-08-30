@@ -165,6 +165,8 @@ describe("AntiSpam", () => {
       files: { enabled: false },
       zalgo: { enabled: false },
       newlines: { enabled: false },
+      accounts: { enabled: false },
+      length: { enabled: false },
     });
 
     expect(await antispam.analyze(fakeMessage({ id: "1", content: "uno" }))).toBeNull();
@@ -226,6 +228,63 @@ describe("links in embeds", () => {
       }),
     );
     expect(incident?.type).toBe("link");
+  });
+});
+
+describe("1.2.0 options", () => {
+  it("respeta disabledDetectors", async () => {
+    const antispam = new AntiSpam(fakeClient(), {
+      flood: { maxMessages: 1, windowMs: 10_000 },
+      disabledDetectors: ["flood"],
+      duplicates: { enabled: false },
+      links: { enabled: false },
+      images: { enabled: false },
+      mentions: { enabled: false },
+      caps: { enabled: false },
+      emojis: { enabled: false },
+      files: { enabled: false },
+      zalgo: { enabled: false },
+      newlines: { enabled: false },
+      accounts: { enabled: false },
+      length: { enabled: false },
+    });
+    expect(await antispam.analyze(fakeMessage({ id: "x", content: "solo" }))).toBeNull();
+  });
+
+  it("aplica override por canal", () => {
+    const antispam = new AntiSpam(fakeClient());
+    antispam.setChannelConfig("guild-1", "channel-1", { flood: { maxMessages: 2 } });
+    expect(antispam.getChannelConfig("guild-1", "channel-1").flood.maxMessages).toBe(2);
+    expect(antispam.getConfig().flood.maxMessages).toBe(5);
+  });
+
+  it("limita enlaces por mensaje", () => {
+    const config = resolveConfig("balanced", { links: { maxLinks: 1 } });
+    const content = "https://evil.test/a https://otro.test/b";
+    const incident = linkDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+        config,
+      }),
+    );
+    expect(incident?.reason).toMatch(/enlaces/i);
+  });
+
+  it("detecta cuentas nuevas", async () => {
+    const { accountDetector } = await import("../src/detectors/accounts");
+    const config = resolveConfig("balanced", { accounts: { enabled: true, minAgeDays: 30 } });
+    const incident = accountDetector.inspect(
+      input({
+        message: fakeMessage({
+          author: { id: "user-1", bot: false, createdTimestamp: Date.now() - 60 * 60 * 1000, avatar: "abc" },
+        }),
+        snapshot: snapshot("hola"),
+        config,
+        now: Date.now(),
+      }),
+    );
+    expect(incident?.type).toBe("account");
   });
 });
 

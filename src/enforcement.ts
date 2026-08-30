@@ -4,6 +4,7 @@ import {
   type GuildMember,
   type Message,
 } from "discord.js";
+import { LOG_LABELS, resolveWarnMessage } from "./locale";
 import type { ActionResult, ActionType, Incident, ResolvedConfig } from "./types";
 
 const SEVERITY_COLOR: Record<Incident["severity"], number> = {
@@ -131,18 +132,28 @@ async function executeAction(
   }
 
   if (action === "warn") {
-    const text = config.punishment.warnMessage
+    const text = resolveWarnMessage(config.locale, config.punishment.warnMessage)
       .replaceAll("{user}", `<@${incident.userId}>`)
       .replaceAll("{reason}", incident.reason)
       .replaceAll("{type}", incident.type)
       .replaceAll("{strikes}", String(strikes));
 
+    const payload = config.punishment.warnAsEmbed
+      ? {
+          embeds: [
+            new EmbedBuilder()
+              .setColor(SEVERITY_COLOR[incident.severity])
+              .setDescription(text),
+          ],
+        }
+      : { content: text };
+
     if (config.punishment.dmUser) {
-      await message.author.send(text).catch(async () => {
-        await replyOrSend(message, text);
+      await message.author.send(payload).catch(async () => {
+        await replyOrSend(message, payload);
       });
     } else {
-      await replyOrSend(message, text);
+      await replyOrSend(message, payload);
     }
     return;
   }
@@ -150,7 +161,7 @@ async function executeAction(
   if (!member) return;
 
   if (action === "timeout") {
-    await member.timeout(config.punishment.timeout.durationMs, reason);
+    await member.timeout(timeoutDuration(config, strikes), reason);
     return;
   }
   if (action === "kick") {
@@ -162,9 +173,20 @@ async function executeAction(
   }
 }
 
-async function replyOrSend(message: Message, text: string): Promise<void> {
+export function timeoutDuration(config: ResolvedConfig, strikes: number): number {
+  const { durationMs, scale, maxDurationMs } = config.punishment.timeout;
+  let ms = durationMs;
+  if (scale === "linear") ms = durationMs * Math.max(1, strikes);
+  if (scale === "exponential") ms = durationMs * 2 ** Math.max(0, strikes - 1);
+  return Math.min(ms, maxDurationMs);
+}
+
+async function replyOrSend(
+  message: Message,
+  payload: { content?: string; embeds?: EmbedBuilder[] },
+): Promise<void> {
   if (message.channel.isSendable()) {
-    await message.channel.send({ content: text });
+    await message.channel.send(payload);
   }
 }
 
@@ -181,17 +203,18 @@ async function sendLog(
   const channel = await message.guild.channels.fetch(channelId).catch(() => null);
   if (!channel || !channel.isTextBased()) return;
 
+  const labels = LOG_LABELS[config.locale];
   const embed = new EmbedBuilder()
     .setColor(SEVERITY_COLOR[incident.severity])
-    .setTitle(`Antispam · ${incident.type}`)
+    .setTitle(labels.title(incident.type))
     .setDescription(incident.reason)
     .addFields(
-      { name: "Usuario", value: `<@${incident.userId}> \`${incident.userId}\``, inline: true },
-      { name: "Canal", value: `<#${incident.channelId}>`, inline: true },
-      { name: "Severidad", value: incident.severity, inline: true },
-      { name: "Strikes", value: String(strikes), inline: true },
-      { name: "Acciones", value: result.applied.join(", ") || "ninguna", inline: true },
-      { name: "Mensaje", value: `[Ir](https://discord.com/channels/${incident.guildId}/${incident.channelId}/${incident.messageId})`, inline: true },
+      { name: labels.user, value: `<@${incident.userId}> \`${incident.userId}\``, inline: true },
+      { name: labels.channel, value: `<#${incident.channelId}>`, inline: true },
+      { name: labels.severity, value: incident.severity, inline: true },
+      { name: labels.strikes, value: String(strikes), inline: true },
+      { name: labels.actions, value: result.applied.join(", ") || labels.none, inline: true },
+      { name: labels.message, value: `[link](https://discord.com/channels/${incident.guildId}/${incident.channelId}/${incident.messageId})`, inline: true },
     )
     .setTimestamp(incident.timestamp);
 

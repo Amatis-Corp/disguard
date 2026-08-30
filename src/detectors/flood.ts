@@ -7,7 +7,11 @@ export const floodDetector: Detector = {
     const rules = config.flood;
     if (!rules.enabled || !message.guild) return null;
 
-    const recent = history.filter((item) => snapshot.timestamp - item.timestamp <= rules.windowMs);
+    const recent = history.filter((item) => {
+      if (snapshot.timestamp - item.timestamp > rules.windowMs) return false;
+      if (rules.sameChannelOnly && item.channelId !== snapshot.channelId) return false;
+      return true;
+    });
     if (recent.length < rules.maxMessages) return null;
 
     return createIncident("flood", snapshot, {

@@ -11,7 +11,9 @@ export const duplicateDetector: Detector = {
 
     const recent = history.filter((item) => {
       if (item.id === snapshot.id) return false;
-      return snapshot.timestamp - item.timestamp <= rules.windowMs;
+      if (snapshot.timestamp - item.timestamp > rules.windowMs) return false;
+      if (rules.sameChannelOnly && item.channelId !== snapshot.channelId) return false;
+      return true;
     });
 
     const matches = recent.filter((item) => {

@@ -33,6 +33,26 @@ export const mentionDetector: Detector = {
     ]);
     unique.delete(message.author.id);
 
+    if (rules.maxRepeatsOfSame > 0) {
+      const repeats = new Map<string, number>();
+      for (const match of message.content.matchAll(/<@!?(\d+)>/g)) {
+        const id = match[1];
+        repeats.set(id, (repeats.get(id) ?? 0) + 1);
+      }
+      for (const [id, count] of repeats) {
+        if (count > rules.maxRepeatsOfSame) {
+          return createIncident("mention", snapshot, {
+            userId: message.author.id,
+            guildId: message.guild.id,
+            severity: rules.severity,
+            reason: `La misma mención se repite ${count} veces`,
+            details: { targetId: id, count },
+            recommendedActions: ["delete", "warn"],
+          });
+        }
+      }
+    }
+
     if (unique.size > rules.maxMentions) {
       return createIncident("mention", snapshot, {
         userId: message.author.id,

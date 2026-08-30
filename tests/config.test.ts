@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_CONFIG, mergeDeep, resolveConfig } from "../src/defaults";
+import { timeoutDuration } from "../src/enforcement";
+import { resolveWarnMessage } from "../src/locale";
 
 describe("resolveConfig", () => {
   it("parte de balanced por defecto", () => {
@@ -17,6 +19,25 @@ describe("resolveConfig", () => {
     expect(config.links.blockInvites).toBe(true);
     expect(config.links.blockList).toEqual(["evil.test"]);
     expect(config.links.blockShorteners).toBe(true);
+  });
+});
+
+describe("timeout scale", () => {
+  it("escala linear y respeta el tope", () => {
+    const config = resolveConfig("balanced", {
+      punishment: { timeout: { durationMs: 60_000, scale: "linear", maxDurationMs: 180_000 } },
+    });
+    expect(timeoutDuration(config, 1)).toBe(60_000);
+    expect(timeoutDuration(config, 2)).toBe(120_000);
+    expect(timeoutDuration(config, 4)).toBe(180_000);
+  });
+});
+
+describe("locale", () => {
+  it("usa la plantilla en inglés si warnMessage está vacío", () => {
+    expect(resolveWarnMessage("en", "")).toMatch(/blocked/i);
+    expect(resolveWarnMessage("es", "")).toMatch(/bloqueado/i);
+    expect(resolveWarnMessage("en", "custom {reason}")).toBe("custom {reason}");
   });
 });
 

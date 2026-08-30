@@ -1,5 +1,7 @@
 export { AntiSpam, createAntiSpam } from "./AntiSpam";
 export { resolveConfig, DEFAULT_CONFIG, mergeDeep } from "./defaults";
+export { WARN_TEMPLATES, LOG_LABELS, resolveWarnMessage } from "./locale";
+export { timeoutDuration } from "./enforcement";
 export { MemoryStore } from "./store/MemoryStore";
 export { DEFAULT_BLOCKED_EXTENSIONS } from "./detectors/files";
 export {
@@ -35,5 +37,9 @@ export type {
   PunishmentConfig,
   ResolvedConfig,
   Severity,
+  AccountConfig,
+  LengthConfig,
+  Locale,
+  TimeoutScale,
   ZalgoConfig,
 } from "./types";

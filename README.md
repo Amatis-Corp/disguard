@@ -21,6 +21,48 @@ Detects flood, repeated text, phishing / unwanted links, duplicate images, menti
 
 # English
 
+## What's new in 1.2.0
+
+More knobs, per-channel rules, and bilingual user-facing text.
+
+| Option | What it does |
+| --- | --- |
+| `locale` | `"en"` or `"es"` for warn + log labels. Empty `warnMessage` uses the locale template. |
+| `ignorePermissions` | Skip members with those Discord permission names (`ManageMessages`, …). |
+| `setChannelConfig(guildId, channelId, patch)` | Rules for one channel (on top of guild + global). |
+| `channelOverrides` | Same thing in static config: `{ "CHANNEL_ID": { flood: { maxMessages: 10 } } }`. |
+| `disabledDetectors` | Turn off detectors by name without touching each block. |
+| `detectorOrder` | Custom detector run order. |
+| `flood.sameChannelOnly` / `duplicates.sameChannelOnly` | Count only the current channel. |
+| `links.maxLinks` / `links.scanEmbeds` | Cap URLs per message; toggle embed scanning. |
+| `images.skipContentTypes` / `images.maxAttachments` | Ignore GIFs, limit images per message. |
+| `mentions.maxRepeatsOfSame` | Same user pinged over and over in one message. |
+| `accounts` | Flag brand-new accounts (`minAgeDays`) or default avatars. Off by default. |
+| `length` | Flag walls of text. Off by default. |
+| `punishment.timeout.scale` | `"none"` \| `"linear"` \| `"exponential"` with `maxDurationMs`. |
+| `punishment.warnAsEmbed` | Warning as an embed. |
+
+```js
+const antispam = new AntiSpam(client, {
+  preset: "balanced",
+  locale: "es",
+  ignorePermissions: ["ManageMessages", "ModerateMembers"],
+  flood: { sameChannelOnly: true },
+  links: { maxLinks: 3, scanEmbeds: true },
+  accounts: { enabled: true, minAgeDays: 2 },
+  punishment: {
+    warnAsEmbed: true,
+    timeout: { enabled: true, durationMs: 60_000, scale: "linear", maxDurationMs: 10 * 60_000 },
+  },
+  disabledDetectors: ["caps"],
+  channelOverrides: {
+    "MEMES_CHANNEL_ID": { images: { maxRepeats: 8 }, emojis: { maxEmojis: 30 } },
+  },
+});
+
+antispam.setChannelConfig(guildId, channelId, { flood: { maxMessages: 12 } });
+```
+
 ## What's new in 1.1.0
 
 - **Punishment cooldown** — after a strike, Disguard waits `punishment.cooldownMs` (8s by default) before warning / timeout / kick / ban again. Extra spam in that window is deleted quietly. This stops the “4 timeouts in one flood” you saw in 1.0.0.
@@ -63,6 +105,7 @@ console.log(antispam.getStats());
 
 ## Table of contents
 
+- [What's new in 1.2.0](#whats-new-in-120)
 - [What's new in 1.1.0](#whats-new-in-110)
 - [Features](#features)
 - [Requirements](#requirements)
@@ -95,6 +138,8 @@ console.log(antispam.getStats());
 | **file** | Dangerous attachments (`.exe`, `.bat`, `.dll`, `.msi`, …) |
 | **zalgo** | Obfuscated / zalgo text (stacked combining marks) |
 | **newline** | Message walls made of empty lines |
+| **account** | Brand-new Discord accounts / default avatar (off by default) |
+| **length** | Over-long messages (off by default) |
 
 Also included:
 
@@ -277,6 +322,11 @@ Every option is optional. Missing fields fall back to the preset (or `balanced` 
 | `ignoreAdministrators` | `boolean` | `true` | Skip members with Administrator. |
 | `checkEdits` | `boolean` | `true` | Re-scan edits for links and mentions. |
 | `cleanupIntervalMs` | `number` | `60000` | How often the memory store is pruned. |
+| `locale` | `"en"` \| `"es"` | `"en"` | Language for warnings and log embeds. |
+| `ignorePermissions` | `string[]` | `[]` | Permission names that bypass checks. |
+| `disabledDetectors` | `DetectorType[]` | `[]` | Detectors to skip. |
+| `detectorOrder` | `DetectorType[]` | `[]` | Custom order. Empty = default. |
+| `channelOverrides` | `object` | `{}` | Per-channel patches keyed by channel id. |
 
 ### Ignore lists
 
@@ -417,6 +467,23 @@ emojis: {
 }
 ```
 
+### Accounts and length
+
+```js
+accounts: {
+  enabled: false,       // turn on to flag new users
+  minAgeDays: 3,
+  blockDefaultAvatar: false,
+  severity: "medium",
+}
+
+length: {
+  enabled: false,
+  maxCharacters: 1000,
+  severity: "low",
+}
+```
+
 ### Files, zalgo, newlines
 
 ```js
@@ -457,7 +524,12 @@ punishment: {
   strikeDecayMs: 15 * 60_000, // strikes expire after 15 minutes
   cooldownMs: 8_000,          // no second timeout/warn during this window
   deleteDuringCooldown: true, // still delete extra spam quietly
+  warnAsEmbed: false,
 }
+
+// timeout.scale: "none" | "linear" (base * strikes) | "exponential" (base * 2^n)
+// timeout.maxDurationMs caps the result (Discord max = 28 days)
+
 ```
 
 `warnMessage` placeholders: `{user}` `{reason}` `{type}` `{strikes}`.
@@ -533,6 +605,9 @@ antispam.isCoolingDown(guildId, userId);
 antispam.setGuildConfig(guildId, { flood: { maxMessages: 3 } });
 antispam.getGuildConfig(guildId);
 antispam.clearGuildConfig(guildId);
+antispam.setChannelConfig(guildId, channelId, { images: { maxRepeats: 8 } });
+antispam.getChannelConfig(guildId, channelId);
+antispam.clearChannelConfig(guildId, channelId);
 
 antispam.use(customDetector);
 antispam.getStats();
@@ -714,6 +789,44 @@ MIT
 
 # Español
 
+## Novedades de 1.2.0
+
+Más opciones, reglas por canal y textos al usuario en inglés o español.
+
+| Opción | Qué hace |
+| --- | --- |
+| `locale` | `"en"` o `"es"` para avisos y logs. Si `warnMessage` está vacío, usa la plantilla del idioma. |
+| `ignorePermissions` | Ignora quien tenga esos permisos (`ManageMessages`, …). |
+| `setChannelConfig` | Config de un canal (encima de guild + global). |
+| `channelOverrides` | Lo mismo en la config estática. |
+| `disabledDetectors` | Apaga detectores por nombre. |
+| `detectorOrder` | Orden de ejecución. |
+| `flood.sameChannelOnly` / `duplicates.sameChannelOnly` | Solo cuenta el canal actual. |
+| `links.maxLinks` / `links.scanEmbeds` | Tope de URLs; escanear embeds. |
+| `images.skipContentTypes` / `images.maxAttachments` | Ignorar gifs, limitar adjuntos. |
+| `mentions.maxRepeatsOfSame` | El mismo ping repetido. |
+| `accounts` | Cuentas nuevas (`minAgeDays`) o avatar por defecto. Apagado por defecto. |
+| `length` | Mensajes kilométricos. Apagado por defecto. |
+| `punishment.timeout.scale` | `"none"` \| `"linear"` \| `"exponential"`. |
+| `punishment.warnAsEmbed` | Aviso en embed. |
+
+```js
+new AntiSpam(client, {
+  locale: "es",
+  ignorePermissions: ["ManageMessages"],
+  flood: { sameChannelOnly: true },
+  links: { maxLinks: 3 },
+  accounts: { enabled: true, minAgeDays: 2 },
+  punishment: {
+    warnAsEmbed: true,
+    timeout: { durationMs: 60_000, scale: "linear", maxDurationMs: 600_000 },
+  },
+  channelOverrides: {
+    "ID_CANAL_MEMES": { emojis: { maxEmojis: 30 } },
+  },
+});
+```
+
 ## Novedades de 1.1.0
 
 - **Cooldown de castigo** — tras un strike espera `punishment.cooldownMs` (8s por defecto) antes de volver a avisar o timeout. El spam extra de esa ventana se borra en silencio. Así no salen 4 timeouts en el mismo flood.
@@ -726,6 +839,7 @@ MIT
 
 ## Tabla de contenidos
 
+- [Novedades de 1.2.0](#novedades-de-120)
 - [Novedades de 1.1.0](#novedades-de-110)
 - [Qué es](#qué-es)
 - [Requisitos](#requisitos)

@@ -11,9 +11,24 @@ export function createImageDetector(store: MemoryStore): Detector {
       const rules = config.images;
       if (!rules.enabled || !message.guild) return null;
 
+      if (rules.maxAttachments > 0) {
+        const mediaCount = [...message.attachments.values()].filter((item) => isMedia(item, rules.skipContentTypes)).length;
+        if (mediaCount > rules.maxAttachments) {
+          return createIncident("image", snapshot, {
+            userId: message.author.id,
+            guildId: message.guild.id,
+            severity: rules.severity,
+            reason: `Demasiadas imágenes (${mediaCount}/${rules.maxAttachments})`,
+            details: { count: mediaCount },
+            recommendedActions: ["delete", "warn"],
+          });
+        }
+      }
+
       const hashes = await collectHashes(message, rules.hashMode, rules.maxDownloadBytes, {
         includeStickers: rules.includeStickers,
         includeEmbeds: rules.includeEmbeds,
+        skipContentTypes: rules.skipContentTypes,
       });
 
       if (hashes.length === 0) return null;
@@ -59,12 +74,12 @@ export async function collectHashes(
   message: Message,
   mode: "meta" | "content",
   maxDownloadBytes: number,
-  options: { includeStickers: boolean; includeEmbeds: boolean },
+  options: { includeStickers: boolean; includeEmbeds: boolean; skipContentTypes?: string[] },
 ): Promise<string[]> {
   const hashes = new Set<string>();
 
   for (const attachment of message.attachments.values()) {
-    if (!isMedia(attachment)) continue;
+    if (!isMedia(attachment, options.skipContentTypes ?? [])) continue;
     const hash = await hashAttachment(attachment, mode, maxDownloadBytes);
     if (hash) hashes.add(hash);
   }
@@ -91,8 +106,9 @@ export async function collectHashes(
   return [...hashes];
 }
 
-function isMedia(attachment: Attachment): boolean {
-  const type = attachment.contentType ?? "";
+function isMedia(attachment: Attachment, skipContentTypes: string[] = []): boolean {
+  const type = (attachment.contentType ?? "").toLowerCase();
+  if (type && skipContentTypes.map((item) => item.toLowerCase()).includes(type)) return false;
   if (type.startsWith("image/") || type.startsWith("video/") || type.startsWith("gif")) return true;
   return /\.(png|jpe?g|gif|webp|mp4|webm|mov)$/i.test(attachment.name ?? "");
 }
