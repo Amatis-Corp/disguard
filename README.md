@@ -1,5 +1,7 @@
 # Disguard
 
+npm: [`@amatiscorp/disguard`](https://www.npmjs.com/package/@amatiscorp/disguard)
+
 Configurable antispam for [discord.js](https://discord.js.org) v14 bots.
 
 It is **not** a bot. You plug it into your existing `Client` and decide every threshold, allowlist, and punishment.
@@ -71,7 +73,7 @@ Also included:
 ## Install
 
 ```bash
-npm install disguard discord.js
+npm install @amatiscorp/disguard discord.js
 ```
 
 ## Quick start
@@ -80,7 +82,7 @@ npm install disguard discord.js
 
 ```js
 const { Client, GatewayIntentBits, Partials } = require("discord.js");
-const { AntiSpam } = require("disguard");
+const { AntiSpam } = require("@amatiscorp/disguard");
 
 const client = new Client({
   intents: [
@@ -123,7 +125,7 @@ process.on("SIGINT", () => {
 
 ```ts
 import { Client, GatewayIntentBits, Partials } from "discord.js";
-import { AntiSpam } from "disguard";
+import { AntiSpam } from "@amatiscorp/disguard";
 
 const client = new Client({
   intents: [
@@ -150,7 +152,7 @@ await client.login(process.env.DISCORD_TOKEN);
 You can also use the factory:
 
 ```js
-const { createAntiSpam } = require("disguard");
+const { createAntiSpam } = require("@amatiscorp/disguard");
 const antispam = createAntiSpam(client, { preset: "balanced" });
 ```
 
@@ -445,7 +447,7 @@ new AntiSpam(client, {
 ## API
 
 ```ts
-import { AntiSpam, createAntiSpam, resolveConfig, DEFAULT_CONFIG } from "disguard";
+import { AntiSpam, createAntiSpam, resolveConfig, DEFAULT_CONFIG } from "@amatiscorp/disguard";
 
 const antispam = new AntiSpam(client, options);
 // same as createAntiSpam(client, options)
@@ -478,7 +480,7 @@ import {
   OFFICIAL_BRANDS,
   resolveConfig,
   DEFAULT_CONFIG,
-} from "disguard";
+} from "@amatiscorp/disguard";
 
 const urls = extractUrls("see [x](https://evil.test) and discord.gg/abc");
 const near = similarity("hello world", "hello world!");
@@ -528,7 +530,7 @@ client.on("interactionCreate", async (interaction) => {
 `setConfig` deep-merges. It does not re-apply a preset unless you build one with `resolveConfig` yourself:
 
 ```js
-const { resolveConfig } = require("disguard");
+const { resolveConfig } = require("@amatiscorp/disguard");
 antispam.setConfig(resolveConfig("strict", { ignored: antispam.getConfig().ignored }));
 ```
 
@@ -666,7 +668,7 @@ Detecta flood, texto repetido, phishing / enlaces no deseados, imágenes repetid
 ## Instalación
 
 ```bash
-npm install disguard discord.js
+npm install @amatiscorp/disguard discord.js
 ```
 
 ## Inicio rápido
@@ -675,7 +677,7 @@ npm install disguard discord.js
 
 ```js
 const { Client, GatewayIntentBits, Partials } = require("discord.js");
-const { AntiSpam } = require("disguard");
+const { AntiSpam } = require("@amatiscorp/disguard");
 
 const client = new Client({
   intents: [
@@ -712,7 +714,7 @@ client.login(process.env.DISCORD_TOKEN);
 ### TypeScript
 
 ```ts
-import { AntiSpam } from "disguard";
+import { AntiSpam } from "@amatiscorp/disguard";
 
 const antispam = new AntiSpam(client, {
   preset: "strict",
@@ -958,7 +960,7 @@ new AntiSpam(client, {
 **Cambiar a strict en caliente**
 
 ```js
-const { resolveConfig } = require("disguard");
+const { resolveConfig } = require("@amatiscorp/disguard");
 antispam.setConfig(resolveConfig("strict", { ignored: antispam.getConfig().ignored }));
 ```
 

@@ -22,7 +22,7 @@ export async function contentHashFromUrl(
 ): Promise<string | null> {
   const response = await fetch(url, {
     redirect: "follow",
-    headers: { "User-Agent": "disguard/1.0" },
+    headers: { "User-Agent": "@amatiscorp/disguard/1.0" },
   });
   if (!response.ok || !response.body) return null;
 

@@ -1,5 +1,5 @@
 {
-  "name": "disguard",
+  "name": "@amatiscorp/disguard",
   "version": "1.0.0",
   "description": "Configurable antispam for discord.js bots: flood, repeated messages, phishing, duplicate images, and more.",
   "keywords": [
@@ -36,6 +36,9 @@
     "README.md",
     "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "engines": {
     "node": ">=18"
   },
