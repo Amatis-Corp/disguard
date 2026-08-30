@@ -46,10 +46,15 @@ const antispam = new AntiSpam(client, {
     maxRepeats: 3,
     hashMode: "meta",
   },
+  files: {
+    blockedExtensions: ["exe", "bat", "cmd", "scr", "dll", "msi"],
+  },
   punishment: {
     deleteMessage: true,
     warnUser: true,
     timeout: { enabled: true, durationMs: 60_000, minStrikes: 2 },
+    cooldownMs: 8_000,
+    deleteDuringCooldown: true,
     logChannelId: null,
   },
   onDetect(incident) {
@@ -60,10 +65,16 @@ const antispam = new AntiSpam(client, {
   },
 });
 
-client.once("ready", () => {
+let booted = false;
+function onReady() {
+  if (booted) return;
+  booted = true;
   antispam.start();
   console.log(`Listo como ${client.user.tag}`);
-});
+}
+
+client.once("clientReady", onReady);
+client.once("ready", onReady);
 
 client.login(requireDiscordToken());
 

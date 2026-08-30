@@ -7,21 +7,52 @@ import { mergeDeep, resolveConfig } from "./defaults";
 import { capsDetector } from "./detectors/caps";
 import { duplicateDetector } from "./detectors/duplicates";
 import { emojiDetector } from "./detectors/emojis";
+import { fileDetector } from "./detectors/files";
 import { floodDetector } from "./detectors/flood";
 import { createImageDetector } from "./detectors/images";
 import { linkDetector } from "./detectors/links";
 import { mentionDetector } from "./detectors/mentions";
+import { newlineDetector } from "./detectors/newlines";
+import { zalgoDetector } from "./detectors/zalgo";
 import { applyPunishment } from "./enforcement";
 import { MemoryStore } from "./store/MemoryStore";
 import type {
+  ActionType,
   AntiSpamOptions,
+  AntiSpamStats,
   DeepPartial,
   Detector,
+  DetectorType,
   Incident,
   MessageSnapshot,
   ResolvedConfig,
 } from "./types";
 import { normalizeText } from "./utils/normalize";
+
+const DETECTOR_TYPES: DetectorType[] = [
+  "flood",
+  "duplicate",
+  "link",
+  "image",
+  "mention",
+  "caps",
+  "emoji",
+  "file",
+  "zalgo",
+  "newline",
+];
+
+const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban"];
+
+function emptyStats(): AntiSpamStats {
+  return {
+    analyzed: 0,
+    incidents: 0,
+    suppressed: 0,
+    byType: Object.fromEntries(DETECTOR_TYPES.map((type) => [type, 0])) as AntiSpamStats["byType"],
+    actions: Object.fromEntries(ACTION_TYPES.map((type) => [type, 0])) as AntiSpamStats["actions"],
+  };
+}
 
 export class AntiSpam {
   readonly client: Client;
@@ -30,6 +61,8 @@ export class AntiSpam {
   private config: ResolvedConfig;
   private readonly detectors: Detector[];
   private readonly options: AntiSpamOptions;
+  private readonly guildConfigs = new Map<string, DeepPartial<ResolvedConfig>>();
+  private stats = emptyStats();
   private started = false;
   private cleanupTimer: NodeJS.Timeout | null = null;
 
@@ -48,17 +81,20 @@ export class AntiSpam {
     const { preset, onDetect: _onDetect, onAction: _onAction, onError: _onError, ...configOptions } = options;
     this.config = resolveConfig(preset, configOptions);
     this.detectors = [
+      fileDetector,
       floodDetector,
       duplicateDetector,
       linkDetector,
       createImageDetector(this.store),
       mentionDetector,
+      zalgoDetector,
+      newlineDetector,
       capsDetector,
       emojiDetector,
     ];
   }
 
-  /** Empieza a escuchar `messageCreate` (y `messageUpdate` si está activo). */
+  /** Starts listening to `messageCreate` (and `messageUpdate` if enabled). */
   start(): this {
     if (this.started) return this;
     this.client.on("messageCreate", this.onMessage);
@@ -73,7 +109,7 @@ export class AntiSpam {
     return this;
   }
 
-  /** Deja de escuchar eventos. Llama esto al apagar el bot. */
+  /** Stops listening. Call this on shutdown. */
   stop(): this {
     if (!this.started) return this;
     this.client.off("messageCreate", this.onMessage);
@@ -86,6 +122,12 @@ export class AntiSpam {
     return this;
   }
 
+  /** Adds a custom detector. It runs after the built-in ones. */
+  use(detector: Detector): this {
+    this.detectors.push(detector);
+    return this;
+  }
+
   getConfig(): ResolvedConfig {
     return structuredClone(this.config);
   }
@@ -95,32 +137,68 @@ export class AntiSpam {
     return this.getConfig();
   }
 
+  /** Global defaults + this guild's overrides. */
+  getGuildConfig(guildId: string): ResolvedConfig {
+    return structuredClone(this.configFor(guildId));
+  }
+
+  setGuildConfig(guildId: string, patch: DeepPartial<ResolvedConfig>): ResolvedConfig {
+    const previous = this.guildConfigs.get(guildId) ?? {};
+    this.guildConfigs.set(guildId, mergeDeep(previous, patch));
+    return this.getGuildConfig(guildId);
+  }
+
+  clearGuildConfig(guildId: string): void {
+    this.guildConfigs.delete(guildId);
+  }
+
   getStrikes(guildId: string, userId: string): number {
-    return this.store.getStrikes(guildId, userId, Date.now(), this.config.punishment.strikeDecayMs);
+    return this.store.getStrikes(
+      guildId,
+      userId,
+      Date.now(),
+      this.configFor(guildId).punishment.strikeDecayMs,
+    );
+  }
+
+  isCoolingDown(guildId: string, userId: string): boolean {
+    const config = this.configFor(guildId);
+    return this.store.isCoolingDown(guildId, userId, Date.now(), config.punishment.cooldownMs);
   }
 
   resetUser(guildId: string, userId: string): void {
     this.store.resetUser(guildId, userId);
   }
 
+  getStats(): AntiSpamStats {
+    return structuredClone(this.stats);
+  }
+
+  resetStats(): void {
+    this.stats = emptyStats();
+  }
+
   /**
-   * Analiza un mensaje sin aplicar castigos.
-   * Útil para tests o para integrar tu propio sistema de sanciones.
+   * Analyzes a message without punishing.
+   * Useful for tests or your own sanction pipeline.
    */
   async analyze(message: Message, options: { isEdit?: boolean } = {}): Promise<Incident | null> {
     if (this.shouldIgnore(message)) return null;
     if (!message.guild) return null;
 
+    const config = this.configFor(message.guild.id);
     const now = Date.now();
     const snapshot = this.toSnapshot(message, now);
     const history = options.isEdit
-      ? this.store.getHistory(message.guild.id, message.author.id, now, this.maxRetentionMs())
+      ? this.store.getHistory(message.guild.id, message.author.id, now, this.maxRetentionMs(config))
       : this.store.pushMessage(
           message.guild.id,
           message.author.id,
           snapshot,
-          this.maxRetentionMs(),
+          this.maxRetentionMs(config),
         );
+
+    this.stats.analyzed += 1;
 
     const detectors = options.isEdit
       ? this.detectors.filter((detector) => detector.type === "link" || detector.type === "mention")
@@ -132,7 +210,7 @@ export class AntiSpam {
           message,
           snapshot,
           history,
-          config: this.config,
+          config,
           now,
         });
         if (incident) return incident;
@@ -145,12 +223,34 @@ export class AntiSpam {
   }
 
   private async handle(message: Message, isEdit: boolean): Promise<void> {
-    if (!this.config.enabled) return;
-    if (isEdit && !this.config.checkEdits) return;
+    const config = message.guild ? this.configFor(message.guild.id) : this.config;
+    if (!config.enabled) return;
+    if (isEdit && !config.checkEdits) return;
+    if (this.shouldIgnore(message)) return;
+    if (!message.guild) return;
 
     try {
+      if (this.store.isCoolingDown(message.guild.id, message.author.id, Date.now(), config.punishment.cooldownMs)) {
+        this.stats.suppressed += 1;
+        if (!isEdit) {
+          this.store.pushMessage(
+            message.guild.id,
+            message.author.id,
+            this.toSnapshot(message, Date.now()),
+            this.maxRetentionMs(config),
+          );
+        }
+        if (config.punishment.deleteDuringCooldown && !config.dryRun && message.deletable) {
+          await message.delete().catch((error) => this.options.onError?.(error, "cooldown-delete"));
+        }
+        return;
+      }
+
       const incident = await this.analyze(message, { isEdit });
       if (!incident) return;
+
+      this.stats.incidents += 1;
+      this.stats.byType[incident.type] += 1;
 
       await this.options.onDetect?.(incident, message);
 
@@ -158,10 +258,14 @@ export class AntiSpam {
         incident.guildId,
         incident.userId,
         Date.now(),
-        this.config.punishment.strikeDecayMs,
+        config.punishment.strikeDecayMs,
       );
 
-      const result = await applyPunishment(message, incident, strikes, this.config);
+      const result = await applyPunishment(message, incident, strikes, config);
+      this.store.markAction(incident.guildId, incident.userId, Date.now());
+      for (const action of result.applied) {
+        this.stats.actions[action] += 1;
+      }
       await this.options.onAction?.(result);
     } catch (error) {
       this.options.onError?.(error, "handle");
@@ -169,7 +273,7 @@ export class AntiSpam {
   }
 
   shouldIgnore(message: Message): boolean {
-    const { config } = this;
+    const config = message.guild ? this.configFor(message.guild.id) : this.config;
 
     if (message.author.bot && config.ignoreBots) return true;
     if (message.webhookId && config.ignoreWebhooks) return true;
@@ -196,6 +300,11 @@ export class AntiSpam {
     return false;
   }
 
+  private configFor(guildId: string): ResolvedConfig {
+    const patch = this.guildConfigs.get(guildId);
+    return patch ? mergeDeep(this.config, patch) : this.config;
+  }
+
   private toSnapshot(message: Message, now: number): MessageSnapshot {
     return {
       id: message.id,
@@ -207,12 +316,13 @@ export class AntiSpam {
     };
   }
 
-  private maxRetentionMs(): number {
+  private maxRetentionMs(config: ResolvedConfig = this.config): number {
     const windows = [
-      this.config.flood.windowMs,
-      this.config.duplicates.windowMs,
-      this.config.images.windowMs,
-      this.config.punishment.strikeDecayMs,
+      config.flood.windowMs,
+      config.duplicates.windowMs,
+      config.images.windowMs,
+      config.punishment.strikeDecayMs,
+      config.punishment.cooldownMs,
     ];
     return Math.max(30_000, ...windows);
   }

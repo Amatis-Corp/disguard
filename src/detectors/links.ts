@@ -1,3 +1,4 @@
+import type { Message } from "discord.js";
 import type { Detector, DetectorInput, Incident } from "../types";
 import {
   brandLookalike,
@@ -8,23 +9,40 @@ import {
 } from "../utils/urls";
 import { createIncident } from "./incident";
 
+export function collectMessageText(message: Message): string {
+  const parts = [message.content];
+  for (const embed of message.embeds) {
+    if (embed.url) parts.push(embed.url);
+    if (embed.title) parts.push(embed.title);
+    if (embed.description) parts.push(embed.description);
+    if (embed.footer?.text) parts.push(embed.footer.text);
+    if (embed.author?.url) parts.push(embed.author.url);
+    for (const field of embed.fields) {
+      parts.push(field.name, field.value);
+    }
+  }
+  return parts.filter(Boolean).join("\n");
+}
+
 export const linkDetector: Detector = {
   type: "link",
   inspect({ message, snapshot, config }: DetectorInput): Incident | null {
     const rules = config.links;
     if (!rules.enabled || !message.guild) return null;
 
-    const urls = extractUrls(message.content);
-    if (urls.length === 0) return null;
+    const text = collectMessageText(message);
+    const urls = extractUrls(text);
 
     for (const pattern of rules.customPatterns) {
       const regex = new RegExp(pattern, "i");
-      if (regex.test(message.content)) {
+      if (regex.test(text)) {
         return flag(snapshot, message.author.id, message.guild.id, rules.severity, "El mensaje coincide con un patrón personalizado", {
           pattern,
         });
       }
     }
+
+    if (urls.length === 0) return null;
 
     for (const url of urls) {
       if (hostMatchesList(url.hostname, rules.allowList)) continue;
@@ -84,7 +102,7 @@ export const linkDetector: Detector = {
     }
 
     if (rules.detectPhishingKeywords) {
-      const keyword = messageHasPhishingKeywords(message.content, rules.extraPhishingKeywords);
+      const keyword = messageHasPhishingKeywords(text, rules.extraPhishingKeywords);
       if (keyword) {
         return flag(
           snapshot,

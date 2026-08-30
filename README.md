@@ -21,8 +21,49 @@ Detects flood, repeated text, phishing / unwanted links, duplicate images, menti
 
 # English
 
+## What's new in 1.1.0
+
+- **Punishment cooldown** — after a strike, Disguard waits `punishment.cooldownMs` (8s by default) before warning / timeout / kick / ban again. Extra spam in that window is deleted quietly. This stops the “4 timeouts in one flood” you saw in 1.0.0.
+- **Per-guild config** — `setGuildConfig(guildId, patch)`, `getGuildConfig`, `clearGuildConfig`.
+- **Custom detectors** — `antispam.use({ type, inspect })`.
+- **Stats** — `getStats()` / `resetStats()`.
+- **New detectors:** dangerous files (`.exe`, `.bat`, …), zalgo / stacked diacritics, newline walls.
+- **Links in embeds** — phishing checks also read embed title, description, fields and footer.
+- `isCoolingDown(guildId, userId)`.
+
+```js
+antispam.setGuildConfig("123456789", {
+  flood: { maxMessages: 3 },
+  links: { blockInvites: true },
+});
+
+antispam.use({
+  type: "flood",
+  inspect({ message, snapshot }) {
+    if (message.content.includes("raid-now")) {
+      return {
+        type: "flood",
+        severity: "critical",
+        userId: message.author.id,
+        guildId: message.guild.id,
+        channelId: snapshot.channelId,
+        messageId: snapshot.id,
+        reason: "Custom raid keyword",
+        details: {},
+        recommendedActions: ["delete", "timeout"],
+        timestamp: snapshot.timestamp,
+      };
+    }
+    return null;
+  },
+});
+
+console.log(antispam.getStats());
+```
+
 ## Table of contents
 
+- [What's new in 1.1.0](#whats-new-in-110)
 - [Features](#features)
 - [Requirements](#requirements)
 - [Install](#install)
@@ -51,6 +92,9 @@ Detects flood, repeated text, phishing / unwanted links, duplicate images, menti
 | **mention** | `@everyone`, `@here`, too many unique mentions |
 | **caps** | Messages that are mostly uppercase |
 | **emoji** | Too many emojis or stickers in one message |
+| **file** | Dangerous attachments (`.exe`, `.bat`, `.dll`, `.msi`, …) |
+| **zalgo** | Obfuscated / zalgo text (stacked combining marks) |
+| **newline** | Message walls made of empty lines |
 
 Also included:
 
@@ -183,7 +227,7 @@ Enable **Message Content Intent** in the [Discord Developer Portal](https://disc
 
 1. Ignores bots, webhooks, the owner, administrators, and anything in your ignore lists.
 2. Keeps a short **in-memory** history per user and guild (no database).
-3. Runs detectors in this order: flood → duplicates → links → images → mentions → caps → emojis. The first match wins.
+3. Runs detectors in this order: files → flood → duplicates → links → images → mentions → zalgo → newlines → caps → emojis. The first match wins.
 4. Adds one strike (with optional decay) and applies the configured punishment.
 5. Message edits only re-check **links** and **mentions**, so editing `hello` into a phishing URL is still caught without counting as flood.
 
@@ -373,6 +417,28 @@ emojis: {
 }
 ```
 
+### Files, zalgo, newlines
+
+```js
+files: {
+  enabled: true,
+  blockedExtensions: ["exe", "bat", "cmd", "com", "scr", "dll", "msi", "vbs", "ps1", "jar", "apk"],
+  severity: "critical",
+}
+
+zalgo: {
+  enabled: true,
+  maxCombining: 20,
+  severity: "medium",
+}
+
+newlines: {
+  enabled: true,
+  maxNewlines: 15,
+  severity: "low",
+}
+```
+
 ### Punishment
 
 Kick and ban stay **disabled** on purpose. Turn them on only if you really want that.
@@ -389,6 +455,8 @@ punishment: {
   escalate: true,
   logChannelId: "CHANNEL_ID_OR_NULL",
   strikeDecayMs: 15 * 60_000, // strikes expire after 15 minutes
+  cooldownMs: 8_000,          // no second timeout/warn during this window
+  deleteDuringCooldown: true, // still delete extra spam quietly
 }
 ```
 
@@ -460,6 +528,15 @@ antispam.setConfig({ flood: { maxMessages: 8 } }); // deep merge, other keys sta
 
 antispam.getStrikes(guildId, userId);
 antispam.resetUser(guildId, userId);
+antispam.isCoolingDown(guildId, userId);
+
+antispam.setGuildConfig(guildId, { flood: { maxMessages: 3 } });
+antispam.getGuildConfig(guildId);
+antispam.clearGuildConfig(guildId);
+
+antispam.use(customDetector);
+antispam.getStats();
+antispam.resetStats();
 
 // Analyze only — no punishment, no callbacks
 const incident = await antispam.analyze(message);
@@ -591,6 +668,9 @@ Wait a few seconds between categories so flood does not eat the next test.
 | Mentions | `@everyone`, `@here`, or 7 different users |
 | Caps | `THIS IS A MESSAGE IN ALL CAPS` (16+ letters) |
 | Emojis | 13+ emojis, or 4 stickers |
+| File | Upload a dummy `.exe` or `.bat` |
+| Zalgo | Text with many stacked combining marks |
+| Newlines | A message with more than 15 line breaks |
 | Edit | Send `hello`, then edit it to `Free Nitro https://bit.ly/test` |
 
 Watch the terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji`.
@@ -634,8 +714,19 @@ MIT
 
 # Español
 
+## Novedades de 1.1.0
+
+- **Cooldown de castigo** — tras un strike espera `punishment.cooldownMs` (8s por defecto) antes de volver a avisar o timeout. El spam extra de esa ventana se borra en silencio. Así no salen 4 timeouts en el mismo flood.
+- **Config por servidor** — `setGuildConfig`, `getGuildConfig`, `clearGuildConfig`.
+- **Detectores propios** — `antispam.use({ type, inspect })`.
+- **Estadísticas** — `getStats()` / `resetStats()`.
+- **Nuevos detectores:** archivos peligrosos, zalgo, paredes de saltos de línea.
+- **Enlaces en embeds** — también se revisan título, descripción, fields y footer.
+- `isCoolingDown(guildId, userId)`.
+
 ## Tabla de contenidos
 
+- [Novedades de 1.1.0](#novedades-de-110)
 - [Qué es](#qué-es)
 - [Requisitos](#requisitos)
 - [Instalación](#instalación)
@@ -657,7 +748,7 @@ MIT
 
 **Disguard** es una librería antispam para bots de discord.js v14. No es un bot: la enchufas a tu `Client` y tú decides umbrales, listas y castigos.
 
-Detecta flood, texto repetido, phishing / enlaces no deseados, imágenes repetidas, spam de menciones, mayúsculas y emojis.
+Detecta flood, texto repetido, phishing / enlaces no deseados (también en embeds), imágenes repetidas, spam de menciones, mayúsculas, emojis, archivos peligrosos, zalgo y paredes de líneas.
 
 ## Requisitos
 
@@ -878,6 +969,14 @@ caps: { enabled: true, minLength: 16, maxPercent: 75, severity: "low" },
 emojis: { enabled: true, maxEmojis: 12, maxStickers: 3, severity: "low" },
 ```
 
+### Archivos, zalgo, saltos de línea
+
+```js
+files: { enabled: true, blockedExtensions: ["exe", "bat", "cmd", "dll", "msi"], severity: "critical" },
+zalgo: { enabled: true, maxCombining: 20, severity: "medium" },
+newlines: { enabled: true, maxNewlines: 15, severity: "low" },
+```
+
 ### Castigos
 
 Kick y ban van **apagados**. Actívalos solo si lo tienes claro.
@@ -894,6 +993,8 @@ punishment: {
   escalate: true,
   logChannelId: "ID_O_NULL",
   strikeDecayMs: 15 * 60_000,
+  cooldownMs: 8_000,
+  deleteDuringCooldown: true,
 }
 ```
 
@@ -927,6 +1028,8 @@ antispam.getConfig();
 antispam.setConfig({ flood: { maxMessages: 8 } });
 antispam.getStrikes(guildId, userId);
 antispam.resetUser(guildId, userId);
+antispam.setGuildConfig(guildId, { flood: { maxMessages: 3 } });
+antispam.getStats();
 
 const incident = await antispam.analyze(message);
 const editado = await antispam.analyze(message, { isEdit: true });
@@ -991,9 +1094,12 @@ Espera unos segundos entre categorías.
 | Menciones | `@everyone`, `@here`, o 7 usuarios |
 | Caps | `ESTO ES UN MENSAJE TODO EN MAYUSCULAS` |
 | Emojis | Más de 12 emojis, o 4 stickers |
+| Archivo | Sube un `.exe` o `.bat` (aunque sea de mentira) |
+| Zalgo | Texto con muchos diacríticos apilados |
+| Líneas | Un mensaje con más de 15 enters |
 | Edición | Manda `hola` y edítalo a `Free Nitro https://bit.ly/test` |
 
-En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji`.
+En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline`.
 
 Al segundo strike el ejemplo mete timeout de 1 minuto. Los strikes caducan a los 15 minutos, o usa `resetUser`.
 

@@ -30,3 +30,11 @@ export function countEmojis(text: string): number {
   const unicode = text.match(/\p{Extended_Pictographic}/gu)?.length ?? 0;
   return custom + unicode;
 }
+
+export function countZalgo(text: string): number {
+  return text.normalize("NFKD").match(ZALGO)?.length ?? 0;
+}
+
+export function countNewlines(text: string): number {
+  return (text.match(/\n/g) ?? []).length;
+}

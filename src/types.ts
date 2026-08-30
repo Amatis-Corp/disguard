@@ -7,7 +7,10 @@ export type DetectorType =
   | "image"
   | "mention"
   | "caps"
-  | "emoji";
+  | "emoji"
+  | "file"
+  | "zalgo"
+  | "newline";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
@@ -161,6 +164,26 @@ export interface EmojiConfig {
   severity: Severity;
 }
 
+export interface FileConfig {
+  enabled: boolean;
+  /** Extensiones bloqueadas, con o sin punto: `exe`, `.bat`. */
+  blockedExtensions: string[];
+  severity: Severity;
+}
+
+export interface ZalgoConfig {
+  enabled: boolean;
+  /** Máximo de marcas combinantes (zalgo / diacríticos apilados). */
+  maxCombining: number;
+  severity: Severity;
+}
+
+export interface NewlineConfig {
+  enabled: boolean;
+  maxNewlines: number;
+  severity: Severity;
+}
+
 export interface TimeoutPunishment {
   enabled: boolean;
   durationMs: number;
@@ -188,6 +211,13 @@ export interface PunishmentConfig {
   logChannelId: string | null;
   /** Los strikes caducan tras este tiempo. 0 = nunca. */
   strikeDecayMs: number;
+  /**
+   * Tras un castigo, no vuelve a avisar/timeout/kick/ban durante este tiempo.
+   * Evita 4 timeouts seguidos en el mismo burst de flood.
+   */
+  cooldownMs: number;
+  /** Sigue borrando mensajes mientras dura el cooldown. */
+  deleteDuringCooldown: boolean;
 }
 
 export interface ResolvedConfig {
@@ -206,11 +236,22 @@ export interface ResolvedConfig {
   mentions: MentionConfig;
   caps: CapsConfig;
   emojis: EmojiConfig;
+  files: FileConfig;
+  zalgo: ZalgoConfig;
+  newlines: NewlineConfig;
   punishment: PunishmentConfig;
   /** Revisa también ediciones de mensajes. */
   checkEdits: boolean;
   /** Intervalo de limpieza de memoria. */
   cleanupIntervalMs: number;
+}
+
+export interface AntiSpamStats {
+  analyzed: number;
+  incidents: number;
+  suppressed: number;
+  byType: Record<DetectorType, number>;
+  actions: Record<ActionType, number>;
 }
 
 export interface AntiSpamOptions extends DeepPartial<ResolvedConfig> {

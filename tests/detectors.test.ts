@@ -144,6 +144,15 @@ describe("AntiSpam", () => {
     expect(antispam.shouldIgnore(staff)).toBe(true);
   });
 
+  it("aplica config por servidor", () => {
+    const antispam = new AntiSpam(fakeClient());
+    antispam.setGuildConfig("guild-1", { flood: { maxMessages: 2 } });
+    expect(antispam.getGuildConfig("guild-1").flood.maxMessages).toBe(2);
+    expect(antispam.getConfig().flood.maxMessages).toBe(5);
+    antispam.clearGuildConfig("guild-1");
+    expect(antispam.getGuildConfig("guild-1").flood.maxMessages).toBe(5);
+  });
+
   it("detecta flood a través de analyze()", async () => {
     const antispam = new AntiSpam(fakeClient(), {
       flood: { maxMessages: 3, windowMs: 10_000 },
@@ -153,11 +162,78 @@ describe("AntiSpam", () => {
       mentions: { enabled: false },
       caps: { enabled: false },
       emojis: { enabled: false },
+      files: { enabled: false },
+      zalgo: { enabled: false },
+      newlines: { enabled: false },
     });
 
     expect(await antispam.analyze(fakeMessage({ id: "1", content: "uno" }))).toBeNull();
     expect(await antispam.analyze(fakeMessage({ id: "2", content: "dos" }))).toBeNull();
     const third = await antispam.analyze(fakeMessage({ id: "3", content: "tres" }));
     expect(third?.type).toBe("flood");
+  });
+});
+
+describe("file / zalgo / newline", () => {
+  it("bloquea adjuntos peligrosos", async () => {
+    const { fileDetector } = await import("../src/detectors/files");
+    const attachments = new Map([
+      ["1", { name: "setup.exe", size: 1200, contentType: "application/octet-stream" }],
+    ]);
+    const incident = fileDetector.inspect(
+      input({
+        message: fakeMessage({ attachments }),
+        snapshot: snapshot(""),
+      }),
+    );
+    expect(incident?.type).toBe("file");
+  });
+
+  it("detecta zalgo", async () => {
+    const { zalgoDetector } = await import("../src/detectors/zalgo");
+    const content = "h" + "\u0301".repeat(30) + "ola";
+    const incident = zalgoDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+      }),
+    );
+    expect(incident?.type).toBe("zalgo");
+  });
+
+  it("detecta saltos de línea excesivos", async () => {
+    const { newlineDetector } = await import("../src/detectors/newlines");
+    const content = `${"linea\n".repeat(20)}fin`;
+    const incident = newlineDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+      }),
+    );
+    expect(incident?.type).toBe("newline");
+  });
+});
+
+describe("links in embeds", () => {
+  it("caza acortadores dentro de un embed", () => {
+    const incident = linkDetector.inspect(
+      input({
+        message: fakeMessage({
+          content: "",
+          embeds: [{ description: "click https://bit.ly/hidden", fields: [], footer: null, author: null }],
+        }),
+        snapshot: snapshot(""),
+      }),
+    );
+    expect(incident?.type).toBe("link");
+  });
+});
+
+describe("cooldown store", () => {
+  it("marca cooldown tras un castigo", () => {
+    const antispam = new AntiSpam(fakeClient(), { punishment: { cooldownMs: 10_000 } });
+    expect(antispam.isCoolingDown("guild-1", "user-1")).toBe(false);
+    antispam.store.markAction("guild-1", "user-1", Date.now());
+    expect(antispam.isCoolingDown("guild-1", "user-1")).toBe(true);
   });
 });

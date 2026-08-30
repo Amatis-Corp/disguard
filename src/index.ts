@@ -1,24 +1,28 @@
 export { AntiSpam, createAntiSpam } from "./AntiSpam";
 export { resolveConfig, DEFAULT_CONFIG, mergeDeep } from "./defaults";
 export { MemoryStore } from "./store/MemoryStore";
+export { DEFAULT_BLOCKED_EXTENSIONS } from "./detectors/files";
 export {
   DEFAULT_PHISHING_KEYWORDS,
   DEFAULT_SHORTENERS,
   OFFICIAL_BRANDS,
   extractUrls,
 } from "./utils/urls";
-export { normalizeText } from "./utils/normalize";
+export { normalizeText, countZalgo, countNewlines } from "./utils/normalize";
 export { similarity } from "./utils/similarity";
 
 export type {
   ActionResult,
   ActionType,
   AntiSpamOptions,
+  AntiSpamStats,
   CapsConfig,
   DeepPartial,
+  Detector,
   DetectorType,
   DuplicateConfig,
   EmojiConfig,
+  FileConfig,
   FloodConfig,
   IgnoreLists,
   ImageConfig,
@@ -26,8 +30,10 @@ export type {
   Incident,
   LinkConfig,
   MentionConfig,
+  NewlineConfig,
   PresetName,
   PunishmentConfig,
   ResolvedConfig,
   Severity,
+  ZalgoConfig,
 } from "./types";

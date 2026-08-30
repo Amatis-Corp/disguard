@@ -4,6 +4,7 @@ interface UserBucket {
   messages: MessageSnapshot[];
   strikes: number;
   lastStrikeAt: number;
+  lastActionAt: number;
 }
 
 interface ImageHit {
@@ -24,7 +25,7 @@ export class MemoryStore {
     const key = this.userKey(guildId, userId);
     let bucket = this.users.get(key);
     if (!bucket) {
-      bucket = { messages: [], strikes: 0, lastStrikeAt: 0 };
+      bucket = { messages: [], strikes: 0, lastStrikeAt: 0, lastActionAt: 0 };
       this.users.set(key, bucket);
     }
     return bucket;
@@ -85,6 +86,17 @@ export class MemoryStore {
     return bucket.strikes;
   }
 
+  markAction(guildId: string, userId: string, now: number): void {
+    this.bucket(guildId, userId).lastActionAt = now;
+  }
+
+  isCoolingDown(guildId: string, userId: string, now: number, cooldownMs: number): boolean {
+    if (cooldownMs <= 0) return false;
+    const bucket = this.users.get(this.userKey(guildId, userId));
+    if (!bucket || bucket.lastActionAt <= 0) return false;
+    return now - bucket.lastActionAt < cooldownMs;
+  }
+
   resetUser(guildId: string, userId: string): void {
     this.users.delete(this.userKey(guildId, userId));
   }
@@ -93,7 +105,8 @@ export class MemoryStore {
     for (const [key, bucket] of this.users) {
       this.pruneUser(bucket, now, maxAgeMs);
       const staleStrikes = bucket.lastStrikeAt > 0 && now - bucket.lastStrikeAt > maxAgeMs;
-      if (bucket.messages.length === 0 && (bucket.strikes === 0 || staleStrikes)) {
+      const staleAction = bucket.lastActionAt <= 0 || now - bucket.lastActionAt > maxAgeMs;
+      if (bucket.messages.length === 0 && (bucket.strikes === 0 || staleStrikes) && staleAction) {
         this.users.delete(key);
       }
     }
