@@ -1,4 +1,7 @@
 # Disguard
+<div align="center">
+
+# Disguard
 
 <div align="center">
 
@@ -14,6 +17,8 @@ Flood · phishing · channel hop · blocked words · ghost pings · TypeScript
 
 </div>
 
+**Security and configurable antispam / phishing protection**
+
 ---
 
 npm: [`@amatiscorp/disguard`](https://www.npmjs.com/package/@amatiscorp/disguard)
@@ -24,7 +29,14 @@ It is **not** a bot. You plug it into your existing `Client` and decide every th
 
 Detects flood, channel hopping, blocked words, phishing / unwanted links, duplicate images, mention spam, ghost pings, excessive caps, and emoji spam.
 
-> **Español:** librería antispam configurable para bots de discord.js. No es un bot. La documentación en español está más abajo: [Español](#español).
+[![npm version](https://img.shields.io/npm/v/pagincord.svg?style=flat-square)](https://www.npmjs.com/package/@amatiscorp/disguard)
+[![npm downloads](https://img.shields.io/npm/dm/pagincord.svg?style=flat-square)](https://www.npmjs.com/package/@amatiscorp/disguard)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
+
+[Installation](#installation) · [Quick start](#quick-start) · [Examples](#examples) · [API](#api-reference) · [Español](#español)
+
+</div>
 
 ---
 
