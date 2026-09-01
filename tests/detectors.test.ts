@@ -16,6 +16,8 @@ function snapshot(content: string, id = "1", timestamp = Date.now()): MessageSna
     normalized: normalizeText(content),
     timestamp,
     attachmentHashes: [],
+    attachmentCount: 0,
+    mentionCount: 0,
   };
 }
 
@@ -172,6 +174,10 @@ describe("AntiSpam", () => {
       punctuation: { enabled: false },
       spoilers: { enabled: false },
       ghostPing: { enabled: false },
+      invisible: { enabled: false },
+      echo: { enabled: false },
+      secrets: { enabled: false },
+      attach: { enabled: false },
     });
 
     expect(await antispam.analyze(fakeMessage({ id: "1", content: "uno" }))).toBeNull();
@@ -257,6 +263,10 @@ describe("1.2.0 options", () => {
       punctuation: { enabled: false },
       spoilers: { enabled: false },
       ghostPing: { enabled: false },
+      invisible: { enabled: false },
+      echo: { enabled: false },
+      secrets: { enabled: false },
+      attach: { enabled: false },
     });
     expect(await antispam.analyze(fakeMessage({ id: "x", content: "solo" }))).toBeNull();
   });
@@ -497,5 +507,130 @@ describe("1.3.0 AntiSpam", () => {
     });
     expect(antispam.shouldIgnore(vip)).toBe(false);
     expect(antispam.getConfig().roleOverrides.vip?.flood?.maxMessages).toBe(20);
+  });
+});
+
+describe("1.4.0 detectors", () => {
+  it("detecta caracteres invisibles", async () => {
+    const { invisibleDetector } = await import("../src/detectors/invisible");
+    const content = `hola${"\u200b".repeat(12)}`;
+    const incident = invisibleDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+      }),
+    );
+    expect(incident?.type).toBe("invisible");
+  });
+
+  it("detecta el mismo texto en varios canales", async () => {
+    const { echoDetector } = await import("../src/detectors/echo");
+    const now = 1_000_000;
+    const text = "compra nitro barato ahora mismo";
+    const history = ["c1", "c2", "c3"].map((channelId, index) => ({
+      ...snapshot(text, String(index), now - 50),
+      channelId,
+    }));
+    const incident = echoDetector.inspect(
+      input({
+        message: fakeMessage({ content: text, channelId: "c3" }),
+        snapshot: history[2],
+        history,
+        now,
+        config: resolveConfig("balanced", { echo: { maxChannels: 3, minLength: 10 } }),
+      }),
+    );
+    expect(incident?.type).toBe("echo");
+  });
+
+  it("detecta webhooks filtrados sin guardar el secreto", async () => {
+    const { secretDetector } = await import("../src/detectors/secrets");
+    const content = "log: https://discord.com/api/webhooks/123456789012345678/abcdefghijklmnopqrstuvwxyzABCDEF";
+    const incident = secretDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+      }),
+    );
+    expect(incident?.type).toBe("secret");
+    expect(incident?.details.kind).toBe("webhook");
+    expect(JSON.stringify(incident)).not.toMatch(/abcdefghijklmnopqrstuvwxyzABCDEF/);
+  });
+
+  it("detecta flood de adjuntos", async () => {
+    const { attachDetector } = await import("../src/detectors/attach");
+    const now = 1_000_000;
+    const history = Array.from({ length: 4 }, (_, index) => ({
+      ...snapshot(`file ${index}`, String(index), now - 20),
+      attachmentCount: 3,
+    }));
+    const incident = attachDetector.inspect(
+      input({
+        message: fakeMessage({ attachments: new Map([["1", { name: "a.png", size: 10 }]]) }),
+        snapshot: { ...history[3], attachmentCount: 3 },
+        history,
+        now,
+        config: resolveConfig("balanced", { attach: { maxAttachments: 8, windowMs: 10_000 } }),
+      }),
+    );
+    expect(incident?.type).toBe("attach");
+  });
+
+  it("no marca duplicados muy cortos", () => {
+    const now = 1_000_000;
+    const current = snapshot("ok", "3", now);
+    const history = [snapshot("ok", "1", now - 100), snapshot("ok", "2", now - 50), current];
+    const incident = duplicateDetector.inspect(
+      input({
+        message: fakeMessage({ content: "ok" }),
+        snapshot: current,
+        history,
+        now,
+      }),
+    );
+    expect(incident).toBeNull();
+  });
+
+  it("ignora mensajes pineados", () => {
+    const antispam = new AntiSpam(fakeClient(), { ignorePinned: true });
+    expect(antispam.shouldIgnore(fakeMessage({ pinned: true }))).toBe(true);
+  });
+
+  it("permite apagar el antispam en caliente", () => {
+    const antispam = new AntiSpam(fakeClient());
+    expect(antispam.isEnabled()).toBe(true);
+    antispam.setEnabled(false);
+    expect(antispam.isEnabled()).toBe(false);
+  });
+
+  it("solo marca cuentas nuevas si hay enlace", async () => {
+    const { accountDetector } = await import("../src/detectors/accounts");
+    const now = Date.now();
+    const config = resolveConfig("balanced", {
+      accounts: { enabled: true, minAgeDays: 30, onlyWithLinks: true, blockDefaultAvatar: false },
+    });
+    const young = {
+      author: { id: "user-1", bot: false, createdTimestamp: now - 60 * 60 * 1000, avatar: "abc" },
+    };
+    expect(
+      accountDetector.inspect(
+        input({
+          message: fakeMessage({ ...young, content: "hola" }),
+          snapshot: snapshot("hola"),
+          config,
+          now,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      accountDetector.inspect(
+        input({
+          message: fakeMessage({ ...young, content: "mira https://evil.test/gift" }),
+          snapshot: snapshot("mira https://evil.test/gift"),
+          config,
+          now,
+        }),
+      )?.type,
+    ).toBe("account");
   });
 });

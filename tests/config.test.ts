@@ -36,6 +36,18 @@ describe("resolveConfig", () => {
     expect(config.ignored.prefixes).toEqual([]);
     expect(config.punishment.addRoleIds).toEqual([]);
   });
+
+  it("incluye defaults 1.4.0", () => {
+    const config = resolveConfig("balanced");
+    expect(config.secrets.enabled).toBe(true);
+    expect(config.echo.maxChannels).toBe(3);
+    expect(config.invisible.maxInvisible).toBe(8);
+    expect(config.attach.maxAttachments).toBe(8);
+    expect(config.duplicates.minLength).toBe(8);
+    expect(config.punishment.purgeCount).toBe(0);
+    expect(config.ignorePinned).toBe(false);
+    expect(resolveConfig("strict").accounts.onlyWithLinks).toBe(true);
+  });
 });
 
 describe("timeout scale", () => {

@@ -35,6 +35,10 @@ export function countZalgo(text: string): number {
   return text.normalize("NFKD").match(ZALGO)?.length ?? 0;
 }
 
+export function countInvisible(text: string): number {
+  return text.match(INVISIBLE)?.length ?? 0;
+}
+
 export function countNewlines(text: string): number {
   return (text.match(/\n/g) ?? []).length;
 }

@@ -26,6 +26,8 @@ export function fakeMessage(overrides: Record<string, unknown> = {}): Message {
     content: "hola",
     channelId: "channel-1",
     webhookId: null,
+    pinned: false,
+    createdTimestamp: Date.now(),
     author: { id: "user-1", bot: false },
     guild: { id: "guild-1", ownerId: "owner-1" },
     member: {

@@ -1,7 +1,17 @@
 import type { Detector, DetectorInput, Incident } from "../types";
 import { createIncident } from "./incident";
+import { extractUrls } from "../utils/urls";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+
+function messageHasUrl(message: DetectorInput["message"]): boolean {
+  if (extractUrls(message.content).length > 0) return true;
+  for (const embed of message.embeds) {
+    if (embed.url) return true;
+    if (embed.description && extractUrls(embed.description).length > 0) return true;
+  }
+  return false;
+}
 
 export const accountDetector: Detector = {
   type: "account",
@@ -18,6 +28,8 @@ export const accountDetector: Detector = {
         recommendedActions: ["delete", "warn"],
       });
     }
+
+    if (rules.onlyWithLinks && !messageHasUrl(message)) return null;
 
     if (rules.minGuildAgeDays > 0 && message.member?.joinedTimestamp) {
       const guildAgeDays = (now - message.member.joinedTimestamp) / DAY_MS;

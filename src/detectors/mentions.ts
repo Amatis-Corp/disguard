@@ -3,7 +3,7 @@ import { createIncident } from "./incident";
 
 export const mentionDetector: Detector = {
   type: "mention",
-  inspect({ message, snapshot, config }: DetectorInput): Incident | null {
+  inspect({ message, snapshot, history, config }: DetectorInput): Incident | null {
     const rules = config.mentions;
     if (!rules.enabled || !message.guild) return null;
 
@@ -62,6 +62,24 @@ export const mentionDetector: Detector = {
         details: { count: unique.size },
         recommendedActions: ["delete", "warn"],
       });
+    }
+
+    if (rules.maxInWindow > 0) {
+      let total = 0;
+      for (const item of history) {
+        if (snapshot.timestamp - item.timestamp > rules.windowMs) continue;
+        total += item.mentionCount ?? 0;
+      }
+      if (total > rules.maxInWindow) {
+        return createIncident("mention", snapshot, {
+          userId: message.author.id,
+          guildId: message.guild.id,
+          severity: rules.severity,
+          reason: `Demasiadas menciones en la ventana (${total}/${rules.maxInWindow})`,
+          details: { count: total, windowMs: rules.windowMs },
+          recommendedActions: ["delete", "warn", "timeout"],
+        });
+      }
     }
 
     return null;

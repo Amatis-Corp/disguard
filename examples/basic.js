@@ -70,10 +70,20 @@ const antispam = new AntiSpam(client, {
     minMentions: 1,
     maxAgeMs: 15_000,
   },
+  secrets: {
+    enabled: true,
+    botTokens: true,
+    webhooks: true,
+  },
+  echo: {
+    maxChannels: 3,
+    windowMs: 12_000,
+  },
   accounts: {
     enabled: false,
     minAgeDays: 3,
     minGuildAgeDays: 0,
+    onlyWithLinks: true,
   },
   punishment: {
     deleteMessage: true,
@@ -84,7 +94,9 @@ const antispam = new AntiSpam(client, {
     deleteDuringCooldown: true,
     addRoleIds: [],
     removeRoleIds: [],
+    purgeCount: 0,
     logChannelId: null,
+    logWebhookUrl: null,
   },
   onDetect(incident) {
     console.log("[detect]", incident.type, incident.reason);

@@ -6,19 +6,23 @@ import {
 } from "discord.js";
 import { mergeDeep, resolveConfig } from "./defaults";
 import { accountDetector } from "./detectors/accounts";
+import { attachDetector } from "./detectors/attach";
 import { capsDetector } from "./detectors/caps";
 import { duplicateDetector } from "./detectors/duplicates";
+import { echoDetector } from "./detectors/echo";
 import { emojiDetector } from "./detectors/emojis";
 import { fileDetector } from "./detectors/files";
 import { floodDetector } from "./detectors/flood";
 import { inspectGhostPing } from "./detectors/ghost";
 import { hopDetector } from "./detectors/hop";
 import { createImageDetector } from "./detectors/images";
+import { invisibleDetector } from "./detectors/invisible";
 import { lengthDetector } from "./detectors/length";
 import { linkDetector } from "./detectors/links";
 import { mentionDetector } from "./detectors/mentions";
 import { newlineDetector } from "./detectors/newlines";
 import { punctuationDetector } from "./detectors/punctuation";
+import { secretDetector } from "./detectors/secrets";
 import { spoilerDetector } from "./detectors/spoilers";
 import { wordDetector } from "./detectors/words";
 import { zalgoDetector } from "./detectors/zalgo";
@@ -55,9 +59,13 @@ const DETECTOR_TYPES: DetectorType[] = [
   "punctuation",
   "spoiler",
   "ghost",
+  "invisible",
+  "echo",
+  "secret",
+  "attach",
 ];
 
-const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban", "addRole", "removeRole"];
+const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban", "addRole", "removeRole", "purge"];
 
 function emptyStats(): AntiSpamStats {
   return {
@@ -103,10 +111,13 @@ export class AntiSpam {
     this.config = resolveConfig(preset, configOptions);
     this.detectors = [
       fileDetector,
+      secretDetector,
       wordDetector,
       floodDetector,
       hopDetector,
+      echoDetector,
       duplicateDetector,
+      attachDetector,
       linkDetector,
       createImageDetector(this.store),
       mentionDetector,
@@ -114,6 +125,7 @@ export class AntiSpam {
       newlineDetector,
       punctuationDetector,
       spoilerDetector,
+      invisibleDetector,
       accountDetector,
       lengthDetector,
       capsDetector,
@@ -166,6 +178,15 @@ export class AntiSpam {
 
   isPaused(): boolean {
     return this.paused;
+  }
+
+  setEnabled(enabled: boolean): this {
+    this.config = mergeDeep(this.config, { enabled });
+    return this;
+  }
+
+  isEnabled(): boolean {
+    return this.config.enabled;
   }
 
   /** Adds a custom detector. It runs after the built-in ones. */
@@ -276,7 +297,13 @@ export class AntiSpam {
     const detectors = this.orderedDetectors(config).filter((detector) => {
       if (config.disabledDetectors.includes(detector.type)) return false;
       if (options.isEdit) {
-        return detector.type === "link" || detector.type === "mention" || detector.type === "word";
+        return (
+          detector.type === "link" ||
+          detector.type === "mention" ||
+          detector.type === "word" ||
+          detector.type === "secret" ||
+          detector.type === "invisible"
+        );
       }
       return true;
     });
@@ -391,6 +418,10 @@ export class AntiSpam {
     if (message.author.bot && config.ignoreBots) return true;
     if (message.webhookId && config.ignoreWebhooks) return true;
     if (message.system && config.ignoreSystem) return true;
+    if (message.pinned && config.ignorePinned) return true;
+    if (config.ignoreOlderThanMs > 0 && message.createdTimestamp) {
+      if (Date.now() - message.createdTimestamp > config.ignoreOlderThanMs) return true;
+    }
     if (!message.guild) return true;
     if (config.ignored.guilds.includes(message.guild.id)) return true;
     if (config.ignored.channels.includes(message.channelId)) return true;
@@ -461,6 +492,11 @@ export class AntiSpam {
   }
 
   private toSnapshot(message: Message, now: number): MessageSnapshot {
+    const mentionCount =
+      [...message.mentions.users.values()].filter((user) => user.id !== message.author.id).length +
+      message.mentions.roles.size +
+      (message.mentions.everyone ? 1 : 0);
+
     return {
       id: message.id,
       channelId: message.channelId,
@@ -468,6 +504,8 @@ export class AntiSpam {
       normalized: normalizeText(message.content),
       timestamp: now,
       attachmentHashes: [],
+      attachmentCount: message.attachments.size,
+      mentionCount,
     };
   }
 
@@ -479,6 +517,9 @@ export class AntiSpam {
       config.punishment.strikeDecayMs,
       config.punishment.cooldownMs,
       config.hop.windowMs,
+      config.echo.windowMs,
+      config.attach.windowMs,
+      config.mentions.windowMs,
     ];
     return Math.max(30_000, ...windows);
   }

@@ -1,13 +1,10 @@
 # Disguard
-<div align="center">
-
-# Disguard
 
 <div align="center">
 
 **Configurable antispam for discord.js v14**
 
-Flood · phishing · channel hop · blocked words · ghost pings · TypeScript
+Flood · phishing · leaked secrets · channel hop · ghost pings · TypeScript
 
 [![npm version](https://img.shields.io/npm/v/@amatiscorp/disguard.svg?style=flat-square)](https://www.npmjs.com/package/@amatiscorp/disguard)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
@@ -17,8 +14,6 @@ Flood · phishing · channel hop · blocked words · ghost pings · TypeScript
 
 </div>
 
-**Security and configurable antispam / phishing protection**
-
 ---
 
 npm: [`@amatiscorp/disguard`](https://www.npmjs.com/package/@amatiscorp/disguard)
@@ -27,18 +22,7 @@ Configurable antispam for [discord.js](https://discord.js.org) v14 bots.
 
 It is **not** a bot. You plug it into your existing `Client` and decide every threshold, allowlist, and punishment.
 
-Detects flood, channel hopping, blocked words, phishing / unwanted links, duplicate images, mention spam, ghost pings, excessive caps, and emoji spam.
-
-[![npm version](https://img.shields.io/npm/v/pagincord.svg?style=flat-square)](https://www.npmjs.com/package/@amatiscorp/disguard)
-[![npm downloads](https://img.shields.io/npm/dm/pagincord.svg?style=flat-square)](https://www.npmjs.com/package/@amatiscorp/disguard)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
-
-[Installation](#installation) · [Quick start](#quick-start) · [Examples](#examples) · [API](#api-reference) · [Español](#español)
-
-</div>
-
----
+Detects flood, leaked tokens/webhooks, channel hopping, blocked words, phishing, duplicate images, mention spam, ghost pings, and more.
 
 **Languages**
 
@@ -49,9 +33,48 @@ Detects flood, channel hopping, blocked words, phishing / unwanted links, duplic
 
 # English
 
-## What's new in 1.3.0
+## What's new in 1.4.0
 
-More detectors, role overlays, mute-style role punishments, and extra ignore knobs. Everything is optional and falls back to the preset.
+Secret scanning, cross-channel copy-paste, invisible unicode, attachment floods, and cleaner logs. Kick/ban stay **off**.
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `secrets` | **on** | Flags Discord **bot tokens** and **webhook URLs** pasted in chat (also embeds). The incident does **not** store the secret. |
+| `echo` | **on**, 3 channels / 12s | Same text pasted across several channels (raid copypasta). Distinct from `hop` (any messages). |
+| `invisible` | **on**, 8 | Zero-width / bidi characters used to dodge filters. |
+| `attach` | **on**, 8 files / 10s | Too many attachments across a short window, not just dangerous extensions. |
+| `duplicates.minLength` | `8` | Short stuff like `ok` / `lol` is no longer duplicate-spam. |
+| `mentions.maxInWindow` | `0` (off) | Cap mentions across several messages, not only one. |
+| `accounts.onlyWithLinks` | `false` (`strict`: true) | New accounts are flagged only if the message has a URL. |
+| `punishment.purgeCount` | `0` | After a hit, bulk-delete N of that user's recent messages in the channel. |
+| `punishment.logWebhookUrl` | `null` | Log embeds to a Discord webhook (no extra log channel needed). |
+| `ignorePinned` | `false` | Skip pinned messages. |
+| `ignoreOlderThanMs` | `0` | Skip old messages (useful on reconnect replay). |
+| `setEnabled(false)` | — | Turn the whole filter off without `stop()`. |
+
+```js
+const antispam = new AntiSpam(client, {
+  preset: "balanced",
+  secrets: { enabled: true, botTokens: true, webhooks: true, extraPatterns: ["ghp_[A-Za-z0-9]{20,}"] },
+  echo: { maxChannels: 3, windowMs: 12_000, minLength: 12 },
+  invisible: { maxInvisible: 8 },
+  attach: { maxAttachments: 8, windowMs: 10_000 },
+  duplicates: { minLength: 8 },
+  accounts: { enabled: true, minAgeDays: 2, onlyWithLinks: true },
+  ignorePinned: true,
+  punishment: {
+    purgeCount: 5,
+    logWebhookUrl: process.env.DISGUARD_LOG_WEBHOOK || null,
+  },
+});
+
+antispam.setEnabled(false); // raid party / event
+antispam.setEnabled(true);
+```
+
+`secrets` is meant to **delete leaks**, not to harvest credentials. Reasons only say “token/webhook”, never the value.
+
+## What's new in 1.3.0
 
 | Option | Default | What it does |
 | --- | --- | --- |
@@ -185,6 +208,7 @@ console.log(antispam.getStats());
 
 ## Table of contents
 
+- [What's new in 1.4.0](#whats-new-in-140)
 - [What's new in 1.3.0](#whats-new-in-130)
 - [What's new in 1.2.0](#whats-new-in-120)
 - [What's new in 1.1.0](#whats-new-in-110)
@@ -226,6 +250,10 @@ console.log(antispam.getStats());
 | **punctuation** | Long runs of the same character (`!!!!`, `aaaa`) |
 | **spoiler** | Spoiler-tag walls |
 | **ghost** | Deleted messages that mentioned users (off by default) |
+| **secret** | Accidental Discord bot tokens / webhook URLs in chat |
+| **echo** | Same text pasted in several channels |
+| **invisible** | Zero-width / bidi obfuscation |
+| **attach** | Attachment floods over a sliding window |
 
 Also included:
 
@@ -360,9 +388,9 @@ Enable **Message Content Intent** in the [Discord Developer Portal](https://disc
 
 1. Ignores bots, webhooks, system messages, the owner, administrators, command prefixes, and anything in your ignore lists.
 2. Keeps a short **in-memory** history per user and guild (no database).
-3. Runs detectors in this order: files → words → flood → hop → duplicates → links → images → mentions → zalgo → newlines → punctuation → spoilers → accounts → length → caps → emojis. The first match wins.
+3. Runs detectors in this order: files → secrets → words → flood → hop → echo → duplicates → attachments → links → images → mentions → zalgo → newlines → punctuation → spoilers → invisible → accounts → length → caps → emojis. The first match wins.
 4. Adds one strike (with optional decay) and applies the configured punishment.
-5. Message edits re-check **links**, **mentions**, and **words**, so editing `hello` into a phishing URL or a blocked word is still caught without counting as flood.
+5. Message edits re-check **links**, **mentions**, **words**, **secrets**, and **invisible**.
 6. Deletes can trigger **ghost** pings if `ghostPing.enabled` is true.
 
 Call `antispam.stop()` on shutdown, hot reload, or plugin unload.
@@ -720,7 +748,8 @@ new AntiSpam(client, {
 {
   type: "flood" | "duplicate" | "link" | "image" | "mention" | "caps" | "emoji"
     | "file" | "zalgo" | "newline" | "account" | "length"
-    | "word" | "hop" | "punctuation" | "spoiler" | "ghost",
+    | "word" | "hop" | "punctuation" | "spoiler" | "ghost"
+    | "secret" | "echo" | "invisible" | "attach",
   severity: "low" | "medium" | "high" | "critical",
   userId: string,
   guildId: string,
@@ -728,7 +757,7 @@ new AntiSpam(client, {
   messageId: string,
   reason: string,
   details: Record<string, unknown>,
-  recommendedActions: Array<"delete" | "warn" | "timeout" | "kick" | "ban" | "addRole" | "removeRole">,
+  recommendedActions: Array<"delete" | "warn" | "timeout" | "kick" | "ban" | "addRole" | "removeRole" | "purge">,
   timestamp: number,
 }
 ```
@@ -758,6 +787,8 @@ antispam.stop();
 antispam.pause();
 antispam.resume();
 antispam.isPaused();
+antispam.setEnabled(false);
+antispam.isEnabled();
 
 const config = antispam.getConfig();
 antispam.setConfig({ flood: { maxMessages: 8 } }); // deep merge, other keys stay
@@ -929,9 +960,13 @@ Wait a few seconds between categories so flood does not eat the next test.
 | Spoilers | More than 8 `\|\|spoiler\|\|` pairs |
 | Blocked word | Enable `words` first, then send a listed word |
 | Ghost ping | Mention someone and delete the message within 15s (`ghostPing.enabled: true`) |
+| Secret | Paste a dummy webhook URL `https://discord.com/api/webhooks/123/abc` |
+| Echo | Same long sentence in 3 channels within 12s |
+| Invisible | A message padded with many zero-width spaces |
+| Attachments | 8+ files in 10 seconds |
 | Edit | Send `hello`, then edit it to `Free Nitro https://bit.ly/test` |
 
-Watch the terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost`.
+Watch the terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost|secret|echo|invisible|attach`.
 
 The second strike applies a 1 minute timeout with the default example config. Strikes decay after 15 minutes, or call `resetUser`.
 
@@ -971,6 +1006,34 @@ MIT
 ---
 
 # Español
+
+## Novedades de 1.4.0
+
+Escaneo de secretos, copypasta entre canales, unicode invisible, flood de adjuntos y logs por webhook. Kick/ban siguen **apagados**.
+
+| Opción | Default | Qué hace |
+| --- | --- | --- |
+| `secrets` | **on** | Caza **tokens de bot** y **webhooks** pegados en el chat. El incidente **no** guarda el secreto. |
+| `echo` | **on**, 3 canales / 12s | El mismo texto en varios canales (raid). No es lo mismo que `hop`. |
+| `invisible` | **on**, 8 | Caracteres de ancho cero / bidi para saltarse filtros. |
+| `attach` | **on**, 8 / 10s | Demasiados adjuntos en una ventana, no solo `.exe`. |
+| `duplicates.minLength` | `8` | `ok` / `lol` ya no cuentan como duplicado. |
+| `mentions.maxInWindow` | `0` (off) | Tope de menciones entre varios mensajes. |
+| `accounts.onlyWithLinks` | `false` (`strict`: true) | Cuentas nuevas solo si el mensaje trae URL. |
+| `punishment.purgeCount` | `0` | Tras un hit, borra N mensajes recientes de ese user en el canal. |
+| `punishment.logWebhookUrl` | `null` | Logs a un webhook de Discord. |
+| `ignorePinned` | `false` | Ignora pineados. |
+| `ignoreOlderThanMs` | `0` | Ignora mensajes viejos (replay al reconectar). |
+| `setEnabled(false)` | — | Apaga el filtro sin `stop()`. |
+
+```js
+new AntiSpam(client, {
+  secrets: { enabled: true, extraPatterns: ["ghp_[A-Za-z0-9]{20,}"] },
+  echo: { maxChannels: 3 },
+  accounts: { enabled: true, onlyWithLinks: true },
+  punishment: { purgeCount: 5, logWebhookUrl: process.env.DISGUARD_LOG_WEBHOOK || null },
+});
+```
 
 ## Novedades de 1.3.0
 
@@ -1061,6 +1124,7 @@ new AntiSpam(client, {
 
 ## Tabla de contenidos
 
+- [Novedades de 1.4.0](#novedades-de-140)
 - [Novedades de 1.3.0](#novedades-de-130)
 - [Novedades de 1.2.0](#novedades-de-120)
 - [Novedades de 1.1.0](#novedades-de-110)
@@ -1181,7 +1245,7 @@ Activa **Message Content Intent** en el [Portal de Discord](https://discord.com/
 
 1. Ignora bots, webhooks, mensajes de sistema, el dueño, administradores, prefijos de comando y tus listas de ignore.
 2. Guarda en **memoria** un historial corto por usuario y servidor. Sin base de datos.
-3. Pasa el mensaje por: archivos → palabras → flood → hop → duplicados → enlaces → imágenes → menciones → zalgo → líneas → puntuación → spoilers → cuentas → longitud → caps → emojis. El primero que dispare gana.
+3. Pasa el mensaje por: archivos → secretos → palabras → flood → hop → echo → duplicados → adjuntos → enlaces → imágenes → menciones → zalgo → líneas → puntuación → spoilers → invisibles → cuentas → longitud → caps → emojis. El primero que dispare gana.
 4. Suma un strike (con caducidad) y aplica el castigo configurado.
 5. Las ediciones revisan **enlaces**, **menciones** y **palabras**.
 6. Los borrados pueden disparar **ghost** ping si `ghostPing.enabled` es true.
@@ -1389,6 +1453,7 @@ antispam.start();
 antispam.stop();
 antispam.pause();
 antispam.resume();
+antispam.setEnabled(false);
 antispam.getConfig();
 antispam.setConfig({ flood: { maxMessages: 8 } });
 antispam.getStrikes(guildId, userId);
@@ -1471,9 +1536,13 @@ Espera unos segundos entre categorías.
 | Spoilers | Más de 8 pares `\|\|spoiler\|\|` |
 | Palabra | Activa `words` y manda una de la lista |
 | Ghost ping | Menciona a alguien y borra el mensaje en menos de 15s (`ghostPing.enabled: true`) |
+| Secreto | Pega un webhook de mentira `https://discord.com/api/webhooks/123/abc` |
+| Echo | La misma frase larga en 3 canales en 12s |
+| Invisible | Un mensaje con muchos espacios de ancho cero |
+| Adjuntos | 8+ archivos en 10 segundos |
 | Edición | Manda `hola` y edítalo a `Free Nitro https://bit.ly/test` |
 
-En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost`.
+En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost|secret|echo|invisible|attach`.
 
 Al segundo strike el ejemplo mete timeout de 1 minuto. Los strikes caducan a los 15 minutos, o usa `resetUser`.
 

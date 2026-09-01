@@ -17,7 +17,11 @@ export type DetectorType =
   | "hop"
   | "punctuation"
   | "spoiler"
-  | "ghost";
+  | "ghost"
+  | "invisible"
+  | "echo"
+  | "secret"
+  | "attach";
 
 export type Locale = "en" | "es";
 
@@ -25,7 +29,7 @@ export type TimeoutScale = "none" | "linear" | "exponential";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
-export type ActionType = "delete" | "warn" | "timeout" | "kick" | "ban" | "addRole" | "removeRole";
+export type ActionType = "delete" | "warn" | "timeout" | "kick" | "ban" | "addRole" | "removeRole" | "purge";
 
 export type ImageHashMode = "meta" | "content";
 
@@ -67,6 +71,8 @@ export interface MessageSnapshot {
   normalized: string;
   timestamp: number;
   attachmentHashes: string[];
+  attachmentCount: number;
+  mentionCount: number;
 }
 
 export interface IgnoreLists {
@@ -94,6 +100,8 @@ export interface DuplicateConfig {
   windowMs: number;
   similarity: number;
   sameChannelOnly: boolean;
+  /** Ignore duplicates shorter than this (after normalize). */
+  minLength: number;
   severity: Severity;
 }
 
@@ -165,6 +173,9 @@ export interface MentionConfig {
   blockHere: boolean;
   /** Same user mentioned this many times in one message. 0 = off. */
   maxRepeatsOfSame: number;
+  /** Mentions across messages in a window. 0 = off. */
+  maxInWindow: number;
+  windowMs: number;
   severity: Severity;
 }
 
@@ -213,6 +224,8 @@ export interface AccountConfig {
   blockDefaultAvatar: boolean;
   /** Minimum days the member must have been in this guild. 0 = off. */
   minGuildAgeDays: number;
+  /** If true, age checks only run when the message contains a URL. */
+  onlyWithLinks: boolean;
   severity: Severity;
 }
 
@@ -260,6 +273,40 @@ export interface GhostPingConfig {
   severity: Severity;
 }
 
+export interface InvisibleConfig {
+  enabled: boolean;
+  /** Zero-width / bidi / BOM characters allowed in one message. */
+  maxInvisible: number;
+  severity: Severity;
+}
+
+export interface EchoConfig {
+  enabled: boolean;
+  /** Unique channels the same text appeared in. */
+  maxChannels: number;
+  windowMs: number;
+  similarity: number;
+  minLength: number;
+  severity: Severity;
+}
+
+export interface SecretConfig {
+  enabled: boolean;
+  botTokens: boolean;
+  webhooks: boolean;
+  extraPatterns: string[];
+  scanEmbeds: boolean;
+  severity: Severity;
+}
+
+export interface AttachConfig {
+  enabled: boolean;
+  /** Attachments across messages in the window (includes the current one). */
+  maxAttachments: number;
+  windowMs: number;
+  severity: Severity;
+}
+
 export interface TimeoutPunishment {
   enabled: boolean;
   durationMs: number;
@@ -303,6 +350,13 @@ export interface PunishmentConfig {
   /** Roles to remove on punish. */
   removeRoleIds: string[];
   minStrikesForRoles: number;
+  /**
+   * After punish, bulk-delete this many of the user's recent messages in the channel
+   * (not including the triggering one if already deleted). 0 = off.
+   */
+  purgeCount: number;
+  /** Discord webhook URL for log embeds. Independent from `logChannelId`. */
+  logWebhookUrl: string | null;
 }
 
 export interface ResolvedConfig {
@@ -336,12 +390,19 @@ export interface ResolvedConfig {
   punctuation: PunctuationConfig;
   spoilers: SpoilerConfig;
   ghostPing: GhostPingConfig;
+  invisible: InvisibleConfig;
+  echo: EchoConfig;
+  secrets: SecretConfig;
+  attach: AttachConfig;
   punishment: PunishmentConfig;
   checkEdits: boolean;
   /** Listen for `messageDelete` (ghost pings). */
   checkDeletes: boolean;
   ignoreThreads: boolean;
   ignoreSystem: boolean;
+  ignorePinned: boolean;
+  /** Skip messages older than this (reconnect replay). 0 = off. */
+  ignoreOlderThanMs: number;
   cleanupIntervalMs: number;
   disabledDetectors: DetectorType[];
   detectorOrder: DetectorType[];

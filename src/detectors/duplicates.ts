@@ -7,7 +7,7 @@ export const duplicateDetector: Detector = {
   inspect({ message, snapshot, history, config }: DetectorInput): Incident | null {
     const rules = config.duplicates;
     if (!rules.enabled || !message.guild) return null;
-    if (!snapshot.normalized || snapshot.normalized.length < 2) return null;
+    if (!snapshot.normalized || snapshot.normalized.length < rules.minLength) return null;
 
     const recent = history.filter((item) => {
       if (item.id === snapshot.id) return false;

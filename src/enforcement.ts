@@ -64,6 +64,7 @@ function planActions(incident: Incident, strikes: number, config: ResolvedConfig
 
   if (punishment.warnUser) actions.push("warn");
   if (punishment.deleteMessage) actions.push("delete");
+  if (punishment.purgeCount > 0) actions.push("purge");
 
   if (!punishment.escalate) {
     return [...new Set(actions)];
@@ -101,6 +102,16 @@ function canSkip(
   }
 
   if (action === "warn") return null;
+  if (action === "purge") {
+    const me = message.guild?.members.me;
+    if (!me?.permissions.has(PermissionFlagsBits.ManageMessages)) {
+      return "Falta el permiso Manage Messages";
+    }
+    if (!("bulkDelete" in message.channel) || typeof message.channel.bulkDelete !== "function") {
+      return "Este canal no permite borrar en lote";
+    }
+    return null;
+  }
   if (action === "addRole" || action === "removeRole") {
     if (!member) return "No se pudo resolver el miembro";
     const me = message.guild?.members.me;
@@ -143,6 +154,11 @@ async function executeAction(
 
   if (action === "delete") {
     await message.delete();
+    return;
+  }
+
+  if (action === "purge") {
+    await purgeUserMessages(message, incident.userId, config.punishment.purgeCount);
     return;
   }
 
@@ -224,11 +240,9 @@ async function sendLog(
   result: ActionResult,
   config: ResolvedConfig,
 ): Promise<void> {
+  const webhook = config.punishment.logWebhookUrl;
   const channelId = config.punishment.logChannelId;
-  if (!channelId || !message.guild) return;
-
-  const channel = await message.guild.channels.fetch(channelId).catch(() => null);
-  if (!channel || !channel.isTextBased()) return;
+  if (!webhook && !channelId) return;
 
   const labels = LOG_LABELS[config.locale];
   const embed = new EmbedBuilder()
@@ -245,7 +259,32 @@ async function sendLog(
     )
     .setTimestamp(incident.timestamp);
 
-  if (channel.isSendable()) {
-    await channel.send({ embeds: [embed] });
+  if (channelId && message.guild) {
+    const channel = await message.guild.channels.fetch(channelId).catch(() => null);
+    if (channel?.isTextBased() && channel.isSendable()) {
+      await channel.send({ embeds: [embed] });
+    }
   }
+
+  if (webhook) {
+    await fetch(webhook, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ embeds: [embed.toJSON()] }),
+    }).catch(() => undefined);
+  }
+}
+
+async function purgeUserMessages(message: Message, userId: string, count: number): Promise<void> {
+  if (count <= 0) return;
+  const channel = message.channel;
+  if (!("bulkDelete" in channel) || typeof channel.bulkDelete !== "function" || !("messages" in channel)) {
+    return;
+  }
+
+  const fetched = await channel.messages.fetch({ limit: Math.min(100, Math.max(count + 5, 20)) });
+  const targets = fetched.filter((item) => item.author.id === userId && item.id !== message.id);
+  const toDelete = [...targets.values()].slice(0, count);
+  if (toDelete.length === 0) return;
+  await channel.bulkDelete(toDelete, true);
 }

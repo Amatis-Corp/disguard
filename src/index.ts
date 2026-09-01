@@ -11,7 +11,7 @@ export {
   OFFICIAL_BRANDS,
   extractUrls,
 } from "./utils/urls";
-export { normalizeText, countZalgo, countNewlines } from "./utils/normalize";
+export { normalizeText, countZalgo, countNewlines, countInvisible } from "./utils/normalize";
 export { similarity } from "./utils/similarity";
 
 export type {
@@ -33,6 +33,10 @@ export type {
   ImageConfig,
   ImageHashMode,
   Incident,
+  InvisibleConfig,
+  EchoConfig,
+  SecretConfig,
+  AttachConfig,
   LinkConfig,
   MentionConfig,
   NewlineConfig,

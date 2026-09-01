@@ -27,6 +27,8 @@ export function inspectGhostPing(
     normalized: "",
     timestamp: now,
     attachmentHashes: [],
+    attachmentCount: 0,
+    mentionCount: 0,
   };
 
   return createIncident("ghost", snapshot, {
