@@ -4,6 +4,7 @@ export { WARN_TEMPLATES, LOG_LABELS, resolveWarnMessage } from "./locale";
 export { timeoutDuration } from "./enforcement";
 export { MemoryStore } from "./store/MemoryStore";
 export { DEFAULT_BLOCKED_EXTENSIONS } from "./detectors/files";
+export { inspectGhostPing } from "./detectors/ghost";
 export {
   DEFAULT_PHISHING_KEYWORDS,
   DEFAULT_SHORTENERS,
@@ -26,6 +27,8 @@ export type {
   EmojiConfig,
   FileConfig,
   FloodConfig,
+  GhostPingConfig,
+  HopConfig,
   IgnoreLists,
   ImageConfig,
   ImageHashMode,
@@ -35,11 +38,14 @@ export type {
   NewlineConfig,
   PresetName,
   PunishmentConfig,
+  PunctuationConfig,
   ResolvedConfig,
   Severity,
+  SpoilerConfig,
   AccountConfig,
   LengthConfig,
   Locale,
   TimeoutScale,
+  WordConfig,
   ZalgoConfig,
 } from "./types";

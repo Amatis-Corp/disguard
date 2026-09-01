@@ -19,6 +19,7 @@ const BASE: ResolvedConfig = {
     channels: [],
     categories: [],
     guilds: [],
+    prefixes: [],
   },
   flood: {
     enabled: true,
@@ -67,6 +68,7 @@ const BASE: ResolvedConfig = {
     extraPhishingKeywords: [],
     maxLinks: 0,
     scanEmbeds: true,
+    blockOauth: true,
     severity: "high",
   },
   images: {
@@ -117,6 +119,7 @@ const BASE: ResolvedConfig = {
       "jar",
       "apk",
     ],
+    maxBytes: 0,
     severity: "critical",
   },
   zalgo: {
@@ -133,12 +136,43 @@ const BASE: ResolvedConfig = {
     enabled: false,
     minAgeDays: 3,
     blockDefaultAvatar: false,
+    minGuildAgeDays: 0,
     severity: "medium",
   },
   length: {
     enabled: false,
     maxCharacters: 1000,
     severity: "low",
+  },
+  words: {
+    enabled: false,
+    list: [],
+    regex: [],
+    ignoreCase: true,
+    matchWholeWord: true,
+    severity: "high",
+  },
+  hop: {
+    enabled: true,
+    maxChannels: 5,
+    windowMs: 8_000,
+    severity: "high",
+  },
+  punctuation: {
+    enabled: true,
+    maxRepeated: 10,
+    severity: "low",
+  },
+  spoilers: {
+    enabled: true,
+    maxSpoilers: 8,
+    severity: "low",
+  },
+  ghostPing: {
+    enabled: false,
+    minMentions: 1,
+    maxAgeMs: 15_000,
+    severity: "high",
   },
   punishment: {
     deleteMessage: true,
@@ -166,12 +200,19 @@ const BASE: ResolvedConfig = {
     cooldownMs: 8_000,
     deleteDuringCooldown: true,
     warnAsEmbed: false,
+    addRoleIds: [],
+    removeRoleIds: [],
+    minStrikesForRoles: 1,
   },
   checkEdits: true,
+  checkDeletes: true,
+  ignoreThreads: false,
+  ignoreSystem: true,
   cleanupIntervalMs: 60_000,
   disabledDetectors: [],
   detectorOrder: [],
   channelOverrides: {},
+  roleOverrides: {},
 };
 
 const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
@@ -184,6 +225,9 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
     emojis: { maxEmojis: 20 },
     zalgo: { enabled: false },
     newlines: { maxNewlines: 25 },
+    hop: { enabled: false },
+    punctuation: { enabled: false },
+    spoilers: { maxSpoilers: 15 },
     links: {
       blockInvites: false,
       blockShorteners: false,
@@ -209,8 +253,11 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
       maxLinks: 4,
       severity: "critical",
     },
-    accounts: { enabled: true, minAgeDays: 1 },
+    accounts: { enabled: true, minAgeDays: 1, minGuildAgeDays: 0 },
     length: { enabled: true, maxCharacters: 800 },
+    hop: { maxChannels: 3, windowMs: 6_000 },
+    ghostPing: { enabled: true },
+    words: { enabled: false },
     punishment: {
       timeout: { enabled: true, durationMs: 5 * 60_000, minStrikes: 1, scale: "linear" },
       kick: { enabled: false, minStrikes: 4 },

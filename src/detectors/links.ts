@@ -58,6 +58,24 @@ export const linkDetector: Detector = {
     for (const url of urls) {
       if (hostMatchesList(url.hostname, rules.allowList)) continue;
 
+      if (rules.blockOauth) {
+        try {
+          const path = new URL(url.href).pathname.toLowerCase();
+          if (path.includes("/oauth") || path.includes("/authorize") || path.includes("/login")) {
+            return flag(
+              snapshot,
+              message.author.id,
+              message.guild.id,
+              "critical",
+              `Posible enlace de login/OAuth: ${url.hostname}`,
+              { url: url.href },
+            );
+          }
+        } catch {
+          // ignore
+        }
+      }
+
       if (hostMatchesList(url.hostname, rules.blockList)) {
         return flag(snapshot, message.author.id, message.guild.id, rules.severity, `Dominio bloqueado: ${url.hostname}`, {
           url: url.href,

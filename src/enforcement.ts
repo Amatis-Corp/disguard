@@ -77,6 +77,13 @@ function planActions(incident: Incident, strikes: number, config: ResolvedConfig
     actions.push("timeout");
   }
 
+  if (punishment.addRoleIds.length > 0 && strikes >= punishment.minStrikesForRoles) {
+    actions.push("addRole");
+  }
+  if (punishment.removeRoleIds.length > 0 && strikes >= punishment.minStrikesForRoles) {
+    actions.push("removeRole");
+  }
+
   return [...new Set(actions)];
 }
 
@@ -94,6 +101,14 @@ function canSkip(
   }
 
   if (action === "warn") return null;
+  if (action === "addRole" || action === "removeRole") {
+    if (!member) return "No se pudo resolver el miembro";
+    const me = message.guild?.members.me;
+    if (!me?.permissions.has(PermissionFlagsBits.ManageRoles)) {
+      return "Falta el permiso Manage Roles";
+    }
+    return null;
+  }
 
   if (!member) return "No se pudo resolver el miembro";
   if (member.id === message.guild?.ownerId) return "No se sanciona al dueño del servidor";
@@ -170,6 +185,18 @@ async function executeAction(
   }
   if (action === "ban") {
     await member.ban({ reason, deleteMessageSeconds: 0 });
+    return;
+  }
+  if (action === "addRole") {
+    for (const roleId of config.punishment.addRoleIds) {
+      await member.roles.add(roleId, reason).catch(() => undefined);
+    }
+    return;
+  }
+  if (action === "removeRole") {
+    for (const roleId of config.punishment.removeRoleIds) {
+      await member.roles.remove(roleId, reason).catch(() => undefined);
+    }
   }
 }
 

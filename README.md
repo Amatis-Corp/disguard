@@ -1,12 +1,28 @@
 # Disguard
 
+<div align="center">
+
+**Configurable antispam for discord.js v14**
+
+Flood · phishing · channel hop · blocked words · ghost pings · TypeScript
+
+[![npm version](https://img.shields.io/npm/v/@amatiscorp/disguard.svg?style=flat-square)](https://www.npmjs.com/package/@amatiscorp/disguard)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![TypeScript](https://img.shields.io/badge/TypeScript-Ready-blue.svg?style=flat-square)](https://www.typescriptlang.org/)
+
+[Install](#install) · [Quick start](#quick-start) · [API](#api) · [Español](#español)
+
+</div>
+
+---
+
 npm: [`@amatiscorp/disguard`](https://www.npmjs.com/package/@amatiscorp/disguard)
 
 Configurable antispam for [discord.js](https://discord.js.org) v14 bots.
 
 It is **not** a bot. You plug it into your existing `Client` and decide every threshold, allowlist, and punishment.
 
-Detects flood, repeated text, phishing / unwanted links, duplicate images, mention spam, excessive caps, and emoji spam.
+Detects flood, channel hopping, blocked words, phishing / unwanted links, duplicate images, mention spam, ghost pings, excessive caps, and emoji spam.
 
 > **Español:** librería antispam configurable para bots de discord.js. No es un bot. La documentación en español está más abajo: [Español](#español).
 
@@ -20,6 +36,58 @@ Detects flood, repeated text, phishing / unwanted links, duplicate images, menti
 ---
 
 # English
+
+## What's new in 1.3.0
+
+More detectors, role overlays, mute-style role punishments, and extra ignore knobs. Everything is optional and falls back to the preset.
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `words` | **off**, empty list | Block a word list and/or regex. `ignoreCase` and `matchWholeWord` are both `true` by default. |
+| `hop` | **on**, 5 channels / 8s | Same user posting across too many unique channels in a window (raid / hop). |
+| `punctuation` | **on**, 10 | `aaaaaa` / `!!!!!!` runs longer than `maxRepeated`. |
+| `spoilers` | **on**, 8 pairs | Too many `\|\|spoiler\|\|` pairs in one message. |
+| `ghostPing` | **off** (`strict`: on) | Punish deleting a message that mentioned people (`messageDelete`). |
+| `checkDeletes` | `true` | Listen for `messageDelete`. Set `false` if you do not want ghost-ping checks. |
+| `ignored.prefixes` | `[]` | Skip messages that start with `!`, `/`, `.`, etc. |
+| `ignoreThreads` | `false` | Skip thread messages. |
+| `ignoreSystem` | `true` | Skip Discord system messages. |
+| `roleOverrides` / `setRoleConfig` | `{}` | Per-role config overlay (before channel overrides). |
+| `links.blockOauth` | `true` | Flag non-allowlisted URLs whose path looks like `/oauth`, `/authorize`, `/login`. Official `discord.com` stays allowed. |
+| `files.maxBytes` | `0` | Max attachment size in bytes. `0` = unlimited. |
+| `accounts.minGuildAgeDays` | `0` | Flag members who joined the guild too recently. `0` = off. |
+| `punishment.addRoleIds` / `removeRoleIds` | `[]` | Add/remove roles on punish (mute role). Needs **Manage Roles**. |
+| `punishment.minStrikesForRoles` | `1` | Minimum strikes before those role actions run. |
+| `onCooldown` | — | Callback when extra spam is deleted quietly during the punishment cooldown. |
+| `pause()` / `resume()` | — | Freeze enforcement without removing listeners. |
+
+```js
+const antispam = new AntiSpam(client, {
+  preset: "balanced",
+  locale: "es",
+  ignored: { prefixes: ["!", "/", "."], roles: ["STAFF_ROLE_ID"] },
+  words: { enabled: true, list: ["raid-now"], regex: ["n[i1]tro\\s+free"] },
+  hop: { maxChannels: 4, windowMs: 6_000 },
+  ghostPing: { enabled: true, minMentions: 1, maxAgeMs: 15_000 },
+  links: { blockOauth: true },
+  files: { maxBytes: 8 * 1024 * 1024 },
+  roleOverrides: {
+    "VIP_ROLE_ID": { flood: { maxMessages: 10 } },
+  },
+  punishment: {
+    addRoleIds: ["MUTE_ROLE_ID"],
+    minStrikesForRoles: 2,
+  },
+  onCooldown(message) {
+    console.log("quiet delete", message.id);
+  },
+});
+
+antispam.setRoleConfig("VIP_ROLE_ID", { emojis: { maxEmojis: 40 } });
+antispam.pause();  // raid over? antispam.resume();
+```
+
+Ghost pings need the message in cache (or `Partials.Message`) so `messageDelete` still has mentions. Kick/ban stay **off**. Role add/remove is opt-in via empty arrays.
 
 ## What's new in 1.2.0
 
@@ -105,6 +173,7 @@ console.log(antispam.getStats());
 
 ## Table of contents
 
+- [What's new in 1.3.0](#whats-new-in-130)
 - [What's new in 1.2.0](#whats-new-in-120)
 - [What's new in 1.1.0](#whats-new-in-110)
 - [Features](#features)
@@ -138,17 +207,23 @@ console.log(antispam.getStats());
 | **file** | Dangerous attachments (`.exe`, `.bat`, `.dll`, `.msi`, …) |
 | **zalgo** | Obfuscated / zalgo text (stacked combining marks) |
 | **newline** | Message walls made of empty lines |
-| **account** | Brand-new Discord accounts / default avatar (off by default) |
+| **account** | Brand-new Discord accounts / default avatar / new guild members (off by default) |
 | **length** | Over-long messages (off by default) |
+| **word** | Custom blocked words and regex (off until you fill `list` / `regex`) |
+| **hop** | Same user jumping across too many channels |
+| **punctuation** | Long runs of the same character (`!!!!`, `aaaa`) |
+| **spoiler** | Spoiler-tag walls |
+| **ghost** | Deleted messages that mentioned users (off by default) |
 
 Also included:
 
 - Three presets: `lenient`, `balanced`, `strict`
-- Ignore lists for users, roles, channels, categories, and guilds
+- Ignore lists for users, roles, channels, categories, guilds, and command prefixes
+- Per-guild, per-channel, and per-role overlays
 - Strike system with decay
-- Optional delete / warn / timeout / kick / ban (kick and ban are **off** by default)
+- Optional delete / warn / timeout / kick / ban / addRole / removeRole (kick and ban are **off** by default)
 - `dryRun` to tune rules without punishing anyone
-- Edit scanning (links and mentions)
+- Edit scanning (links, mentions, and words)
 - Zero extra runtime dependencies (peer: `discord.js`)
 - In-memory store only — no database required
 - Full TypeScript types
@@ -263,6 +338,7 @@ npm run dev
 | Warn in the channel | **Send Messages** |
 | Log embeds | **Embed Links** |
 | Kick / ban (opt-in) | **Kick Members** / **Ban Members** |
+| Mute / add / remove roles (opt-in) | **Manage Roles** |
 
 The bot will not sanction the guild owner or anyone above it in the role hierarchy. Those actions are skipped and reported in `onAction`.
 
@@ -270,11 +346,12 @@ Enable **Message Content Intent** in the [Discord Developer Portal](https://disc
 
 ## How it works
 
-1. Ignores bots, webhooks, the owner, administrators, and anything in your ignore lists.
+1. Ignores bots, webhooks, system messages, the owner, administrators, command prefixes, and anything in your ignore lists.
 2. Keeps a short **in-memory** history per user and guild (no database).
-3. Runs detectors in this order: files → flood → duplicates → links → images → mentions → zalgo → newlines → caps → emojis. The first match wins.
+3. Runs detectors in this order: files → words → flood → hop → duplicates → links → images → mentions → zalgo → newlines → punctuation → spoilers → accounts → length → caps → emojis. The first match wins.
 4. Adds one strike (with optional decay) and applies the configured punishment.
-5. Message edits only re-check **links** and **mentions**, so editing `hello` into a phishing URL is still caught without counting as flood.
+5. Message edits re-check **links**, **mentions**, and **words**, so editing `hello` into a phishing URL or a blocked word is still caught without counting as flood.
+6. Deletes can trigger **ghost** pings if `ghostPing.enabled` is true.
 
 Call `antispam.stop()` on shutdown, hot reload, or plugin unload.
 
@@ -304,6 +381,8 @@ new AntiSpam(client, {
 | Mentions | 10 | 6 | 3 |
 | Block invites | no | no | yes |
 | Block shorteners | no | yes | yes |
+| Channel hop | off | 5 / 8s | 3 / 6s |
+| Ghost pings | off | off | on |
 | Auto timeout | off | 60s from 2 strikes | 5 min from 1 strike |
 
 ## Full configuration
@@ -320,13 +399,17 @@ Every option is optional. Missing fields fall back to the preset (or `balanced` 
 | `ignoreWebhooks` | `boolean` | `true` | Skip webhooks. |
 | `ignoreOwner` | `boolean` | `true` | Skip the guild owner. |
 | `ignoreAdministrators` | `boolean` | `true` | Skip members with Administrator. |
-| `checkEdits` | `boolean` | `true` | Re-scan edits for links and mentions. |
+| `checkEdits` | `boolean` | `true` | Re-scan edits for links, mentions, and words. |
+| `checkDeletes` | `boolean` | `true` | Listen for `messageDelete` (ghost pings). |
+| `ignoreThreads` | `boolean` | `false` | Skip messages in threads. |
+| `ignoreSystem` | `boolean` | `true` | Skip Discord system messages. |
 | `cleanupIntervalMs` | `number` | `60000` | How often the memory store is pruned. |
 | `locale` | `"en"` \| `"es"` | `"en"` | Language for warnings and log embeds. |
 | `ignorePermissions` | `string[]` | `[]` | Permission names that bypass checks. |
 | `disabledDetectors` | `DetectorType[]` | `[]` | Detectors to skip. |
 | `detectorOrder` | `DetectorType[]` | `[]` | Custom order. Empty = default. |
 | `channelOverrides` | `object` | `{}` | Per-channel patches keyed by channel id. |
+| `roleOverrides` | `object` | `{}` | Per-role patches keyed by role id. |
 
 ### Ignore lists
 
@@ -337,10 +420,11 @@ ignored: {
   channels: ["789"],
   categories: ["101"],
   guilds: ["202"],
+  prefixes: ["!", "/", "."],
 }
 ```
 
-IDs are snowflakes as strings. A staff role in `ignored.roles` bypasses every detector.
+IDs are snowflakes as strings. A staff role in `ignored.roles` bypasses every detector. `prefixes` skip command messages (`!help` is ignored if `"!"` is listed).
 
 ### Flood
 
@@ -387,6 +471,9 @@ links: {
   suspiciousTlds: [],          // e.g. ["tk", "gq"]
   customPatterns: [],          // regex against the whole message
   extraPhishingKeywords: ["fake giveaway"],
+  maxLinks: 0,
+  scanEmbeds: true,
+  blockOauth: true,
   severity: "high",
 }
 ```
@@ -402,6 +489,7 @@ Built-in checks (each can be turned off):
 - Scam phrases plus any link (`free nitro`, `steam gift`, `verifica tu cuenta`, …)
 - Discord invite links if `blockInvites` is `true`
 - Markdown-masked links: `[click](https://evil.test)`
+- Login / OAuth-looking paths on non-allowlisted hosts if `blockOauth` is `true`
 
 ```js
 // Block foreign server invites
@@ -474,6 +562,7 @@ accounts: {
   enabled: false,       // turn on to flag new users
   minAgeDays: 3,
   blockDefaultAvatar: false,
+  minGuildAgeDays: 0,   // 0 = off; e.g. 1 = joined this guild today
   severity: "medium",
 }
 
@@ -490,6 +579,7 @@ length: {
 files: {
   enabled: true,
   blockedExtensions: ["exe", "bat", "cmd", "com", "scr", "dll", "msi", "vbs", "ps1", "jar", "apk"],
+  maxBytes: 0,           // 0 = unlimited
   severity: "critical",
 }
 
@@ -505,6 +595,57 @@ newlines: {
   severity: "low",
 }
 ```
+
+### Words, channel hop, punctuation, spoilers
+
+```js
+words: {
+  enabled: false,          // stays off until you add a list or regex
+  list: ["raid-now"],
+  regex: ["n[i1]tro\\s+free"],
+  ignoreCase: true,
+  matchWholeWord: true,
+  severity: "high",
+}
+
+hop: {
+  enabled: true,
+  maxChannels: 5,          // 5th unique channel in the window triggers
+  windowMs: 8_000,
+  severity: "high",
+}
+
+punctuation: {
+  enabled: true,
+  maxRepeated: 10,         // 11+ of the same character in a row
+  severity: "low",
+}
+
+spoilers: {
+  enabled: true,
+  maxSpoilers: 8,
+  severity: "low",
+}
+```
+
+`lenient` turns hop and punctuation off. `strict` tightens hop to 3 channels / 6s.
+
+### Ghost pings
+
+Off in `balanced` / `lenient`. On in `strict`. Needs `checkDeletes: true` (default) and the deleted message in cache (`Partials.Message` in your Client).
+
+```js
+ghostPing: {
+  enabled: false,
+  minMentions: 1,
+  maxAgeMs: 15_000,        // 0 = any age
+  severity: "high",
+}
+
+checkDeletes: true
+```
+
+Disable with `ghostPing: { enabled: false }` or `disabledDetectors: ["ghost"]`.
 
 ### Punishment
 
@@ -525,6 +666,9 @@ punishment: {
   cooldownMs: 8_000,          // no second timeout/warn during this window
   deleteDuringCooldown: true, // still delete extra spam quietly
   warnAsEmbed: false,
+  addRoleIds: [],             // e.g. ["MUTE_ROLE_ID"] — needs Manage Roles
+  removeRoleIds: [],
+  minStrikesForRoles: 1,
 }
 
 // timeout.scale: "none" | "linear" (base * strikes) | "exponential" (base * 2^n)
@@ -534,7 +678,7 @@ punishment: {
 
 `warnMessage` placeholders: `{user}` `{reason}` `{type}` `{strikes}`.
 
-With `escalate: true`, Disguard applies **one** hard action (timeout, or kick, or ban — whichever threshold you hit). Delete and warn can still run together.
+With `escalate: true`, Disguard applies **one** hard action (timeout, or kick, or ban — whichever threshold you hit). Delete and warn can still run together. `addRole` / `removeRole` run if those ID lists are non-empty and strikes ≥ `minStrikesForRoles`.
 
 If the bot lacks a permission, or the target is higher in the hierarchy, that action is skipped and listed in `result.skipped`.
 
@@ -552,6 +696,9 @@ new AntiSpam(client, {
   onError(error, context) {
     console.error("[disguard]", context, error);
   },
+  onCooldown(message) {
+    // Extra spam during punishment.cooldownMs (already deleted if deleteDuringCooldown).
+  },
 });
 ```
 
@@ -559,7 +706,9 @@ new AntiSpam(client, {
 
 ```ts
 {
-  type: "flood" | "duplicate" | "link" | "image" | "mention" | "caps" | "emoji",
+  type: "flood" | "duplicate" | "link" | "image" | "mention" | "caps" | "emoji"
+    | "file" | "zalgo" | "newline" | "account" | "length"
+    | "word" | "hop" | "punctuation" | "spoiler" | "ghost",
   severity: "low" | "medium" | "high" | "critical",
   userId: string,
   guildId: string,
@@ -567,7 +716,7 @@ new AntiSpam(client, {
   messageId: string,
   reason: string,
   details: Record<string, unknown>,
-  recommendedActions: Array<"delete" | "warn" | "timeout" | "kick" | "ban">,
+  recommendedActions: Array<"delete" | "warn" | "timeout" | "kick" | "ban" | "addRole" | "removeRole">,
   timestamp: number,
 }
 ```
@@ -594,6 +743,9 @@ const antispam = new AntiSpam(client, options);
 
 antispam.start();
 antispam.stop();
+antispam.pause();
+antispam.resume();
+antispam.isPaused();
 
 const config = antispam.getConfig();
 antispam.setConfig({ flood: { maxMessages: 8 } }); // deep merge, other keys stay
@@ -608,6 +760,8 @@ antispam.clearGuildConfig(guildId);
 antispam.setChannelConfig(guildId, channelId, { images: { maxRepeats: 8 } });
 antispam.getChannelConfig(guildId, channelId);
 antispam.clearChannelConfig(guildId, channelId);
+antispam.setRoleConfig(roleId, { flood: { maxMessages: 12 } });
+antispam.clearRoleConfig(roleId);
 
 antispam.use(customDetector);
 antispam.getStats();
@@ -692,6 +846,18 @@ antispam.setConfig(resolveConfig("strict", { ignored: antispam.getConfig().ignor
 images: { hashMode: "content", maxDownloadBytes: 1_000_000 }
 ```
 
+**Mute role instead of timeout**
+
+```js
+punishment: {
+  timeout: { enabled: false, durationMs: 60_000, minStrikes: 99 },
+  addRoleIds: ["MUTE_ROLE_ID"],
+  minStrikesForRoles: 1,
+}
+```
+
+The bot role must sit **above** the mute role. Needs **Manage Roles**.
+
 **Reset a user after a false positive**
 
 ```js
@@ -746,9 +912,14 @@ Wait a few seconds between categories so flood does not eat the next test.
 | File | Upload a dummy `.exe` or `.bat` |
 | Zalgo | Text with many stacked combining marks |
 | Newlines | A message with more than 15 line breaks |
+| Channel hop | Same user posts in 5 different channels within 8 seconds |
+| Punctuation | `aaaaaaaaaaa` or `!!!!!!!!!!!` |
+| Spoilers | More than 8 `\|\|spoiler\|\|` pairs |
+| Blocked word | Enable `words` first, then send a listed word |
+| Ghost ping | Mention someone and delete the message within 15s (`ghostPing.enabled: true`) |
 | Edit | Send `hello`, then edit it to `Free Nitro https://bit.ly/test` |
 
-Watch the terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji`.
+Watch the terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost`.
 
 The second strike applies a 1 minute timeout with the default example config. Strikes decay after 15 minutes, or call `resetUser`.
 
@@ -788,6 +959,45 @@ MIT
 ---
 
 # Español
+
+## Novedades de 1.3.0
+
+Más detectores, overlays por rol, mute por rol y más ignores. Todo es opcional.
+
+| Opción | Default | Qué hace |
+| --- | --- | --- |
+| `words` | **apagado**, lista vacía | Palabras y/o regex bloqueados. `ignoreCase` y `matchWholeWord` en `true`. |
+| `hop` | **on**, 5 canales / 8s | El mismo usuario escribe en demasiados canales (raid / hop). |
+| `punctuation` | **on**, 10 | Rachas de `aaaaaa` / `!!!!!!` más largas que `maxRepeated`. |
+| `spoilers` | **on**, 8 pares | Demasiados `\|\|spoiler\|\|` en un mensaje. |
+| `ghostPing` | **off** (`strict`: on) | Castiga borrar un mensaje que mencionaba gente. |
+| `checkDeletes` | `true` | Escucha `messageDelete`. |
+| `ignored.prefixes` | `[]` | Ignora mensajes que empiezan por `!`, `/`, `.`. |
+| `ignoreThreads` | `false` | Ignora hilos. |
+| `ignoreSystem` | `true` | Ignora mensajes de sistema. |
+| `roleOverrides` / `setRoleConfig` | `{}` | Config por rol (antes de la de canal). |
+| `links.blockOauth` | `true` | URLs de login/OAuth fuera de la allowList. `discord.com` sigue permitido. |
+| `files.maxBytes` | `0` | Tamaño máximo de adjunto. `0` = sin límite. |
+| `accounts.minGuildAgeDays` | `0` | Miembros demasiado nuevos en **este** servidor. `0` = off. |
+| `punishment.addRoleIds` / `removeRoleIds` | `[]` | Añadir/quitar roles al castigar (mute). Hace falta **Manage Roles**. |
+| `onCooldown` | — | Callback cuando el cooldown borra spam extra en silencio. |
+| `pause()` / `resume()` | — | Congela el antispam sin quitar listeners. |
+
+```js
+const antispam = new AntiSpam(client, {
+  locale: "es",
+  ignored: { prefixes: ["!", "/", "."], roles: ["ID_STAFF"] },
+  words: { enabled: true, list: ["raid-now"] },
+  hop: { maxChannels: 4, windowMs: 6_000 },
+  ghostPing: { enabled: true, maxAgeMs: 15_000 },
+  punishment: { addRoleIds: ["ID_MUTE"], minStrikesForRoles: 2 },
+});
+
+antispam.setRoleConfig("ID_VIP", { flood: { maxMessages: 10 } });
+antispam.pause();
+```
+
+Kick y ban siguen **apagados**. Ghost ping necesita el mensaje en caché (`Partials.Message`).
 
 ## Novedades de 1.2.0
 
@@ -839,6 +1049,7 @@ new AntiSpam(client, {
 
 ## Tabla de contenidos
 
+- [Novedades de 1.3.0](#novedades-de-130)
 - [Novedades de 1.2.0](#novedades-de-120)
 - [Novedades de 1.1.0](#novedades-de-110)
 - [Qué es](#qué-es)
@@ -862,7 +1073,7 @@ new AntiSpam(client, {
 
 **Disguard** es una librería antispam para bots de discord.js v14. No es un bot: la enchufas a tu `Client` y tú decides umbrales, listas y castigos.
 
-Detecta flood, texto repetido, phishing / enlaces no deseados (también en embeds), imágenes repetidas, spam de menciones, mayúsculas, emojis, archivos peligrosos, zalgo y paredes de líneas.
+Detecta flood, salto de canales, palabras bloqueadas, phishing / enlaces no deseados (también en embeds), imágenes repetidas, spam de menciones, ghost pings, mayúsculas, emojis, archivos peligrosos, zalgo y paredes de líneas.
 
 ## Requisitos
 
@@ -948,6 +1159,7 @@ npm run dev
 | Avisar en el canal | **Send Messages** |
 | Embed de logs | **Embed Links** |
 | Kick / ban (opt-in) | **Kick Members** / **Ban Members** |
+| Mute / add / remove roles (opt-in) | **Manage Roles** |
 
 No puede sancionar al dueño del servidor ni a quien esté por encima del bot en la jerarquía.
 
@@ -955,11 +1167,12 @@ Activa **Message Content Intent** en el [Portal de Discord](https://discord.com/
 
 ## Cómo funciona
 
-1. Ignora bots, webhooks, el dueño, administradores y tus listas de ignore.
+1. Ignora bots, webhooks, mensajes de sistema, el dueño, administradores, prefijos de comando y tus listas de ignore.
 2. Guarda en **memoria** un historial corto por usuario y servidor. Sin base de datos.
-3. Pasa el mensaje por: flood → duplicados → enlaces → imágenes → menciones → caps → emojis. El primero que dispare gana.
+3. Pasa el mensaje por: archivos → palabras → flood → hop → duplicados → enlaces → imágenes → menciones → zalgo → líneas → puntuación → spoilers → cuentas → longitud → caps → emojis. El primero que dispare gana.
 4. Suma un strike (con caducidad) y aplica el castigo configurado.
-5. Las ediciones solo revisan **enlaces** y **menciones**.
+5. Las ediciones revisan **enlaces**, **menciones** y **palabras**.
+6. Los borrados pueden disparar **ghost** ping si `ghostPing.enabled` es true.
 
 Llama `antispam.stop()` al apagar el proceso.
 
@@ -992,8 +1205,12 @@ Todo es opcional. Lo que no pongas usa el preset.
 | `ignoreWebhooks` | `boolean` | `true` | Ignora webhooks. |
 | `ignoreOwner` | `boolean` | `true` | Ignora al dueño. |
 | `ignoreAdministrators` | `boolean` | `true` | Ignora quien tenga Administrator. |
-| `checkEdits` | `boolean` | `true` | Revisa ediciones (enlaces y menciones). |
+| `checkEdits` | `boolean` | `true` | Revisa ediciones (enlaces, menciones y palabras). |
+| `checkDeletes` | `boolean` | `true` | Escucha `messageDelete` (ghost pings). |
+| `ignoreThreads` | `boolean` | `false` | Ignora hilos. |
+| `ignoreSystem` | `boolean` | `true` | Ignora mensajes de sistema. |
 | `cleanupIntervalMs` | `number` | `60000` | Limpieza de memoria. |
+| `roleOverrides` | `object` | `{}` | Parches por rol. |
 
 ### Listas de ignore
 
@@ -1004,6 +1221,7 @@ ignored: {
   channels: ["id"],
   categories: ["id"],
   guilds: ["id"],
+  prefixes: ["!", "/", "."],
 }
 ```
 
@@ -1048,13 +1266,16 @@ links: {
   suspiciousTlds: [],
   customPatterns: ["steamcommunity\\.ru"],
   extraPhishingKeywords: ["sorteo falso"],
+  maxLinks: 0,
+  scanEmbeds: true,
+  blockOauth: true,
   severity: "high",
 }
 ```
 
 La `allowList` gana a las heurísticas. `discord.com` y `youtube.com` ya vienen permitidos.
 
-Heurísticas incluidas (todas se pueden apagar): acortadores, IPs, punycode, clones de marcas, palabras de estafa + enlace, invitaciones si `blockInvites` es `true`, y enlaces enmascarados `[texto](url)`.
+Heurísticas incluidas (todas se pueden apagar): acortadores, IPs, punycode, clones de marcas, palabras de estafa + enlace, invitaciones si `blockInvites` es `true`, enlaces enmascarados `[texto](url)`, y rutas de login/OAuth si `blockOauth` es `true`.
 
 ### Imágenes
 
@@ -1086,10 +1307,22 @@ emojis: { enabled: true, maxEmojis: 12, maxStickers: 3, severity: "low" },
 ### Archivos, zalgo, saltos de línea
 
 ```js
-files: { enabled: true, blockedExtensions: ["exe", "bat", "cmd", "dll", "msi"], severity: "critical" },
+files: { enabled: true, blockedExtensions: ["exe", "bat", "cmd", "dll", "msi"], maxBytes: 0, severity: "critical" },
 zalgo: { enabled: true, maxCombining: 20, severity: "medium" },
 newlines: { enabled: true, maxNewlines: 15, severity: "low" },
 ```
+
+### Palabras, hop, puntuación, spoilers, ghost ping
+
+```js
+words: { enabled: false, list: ["raid-now"], regex: [], ignoreCase: true, matchWholeWord: true, severity: "high" },
+hop: { enabled: true, maxChannels: 5, windowMs: 8_000, severity: "high" },
+punctuation: { enabled: true, maxRepeated: 10, severity: "low" },
+spoilers: { enabled: true, maxSpoilers: 8, severity: "low" },
+ghostPing: { enabled: false, minMentions: 1, maxAgeMs: 15_000, severity: "high" },
+```
+
+`lenient` apaga hop y puntuación. `strict` enciende ghost ping y aprieta hop a 3 canales / 6s.
 
 ### Castigos
 
@@ -1109,12 +1342,15 @@ punishment: {
   strikeDecayMs: 15 * 60_000,
   cooldownMs: 8_000,
   deleteDuringCooldown: true,
+  addRoleIds: [],
+  removeRoleIds: [],
+  minStrikesForRoles: 1,
 }
 ```
 
 Placeholders: `{user}` `{reason}` `{type}` `{strikes}`.
 
-Con `escalate: true` se aplica **un** castigo fuerte (timeout, kick o ban). Aviso y borrado se pueden sumar.
+Con `escalate: true` se aplica **un** castigo fuerte (timeout, kick o ban). Aviso y borrado se pueden sumar. `addRole` / `removeRole` corren si las listas no están vacías.
 
 ## Callbacks
 
@@ -1126,6 +1362,7 @@ new AntiSpam(client, {
   onError(error, context) {
     console.error(context, error);
   },
+  onCooldown(message) {},
 });
 ```
 
@@ -1138,11 +1375,15 @@ const antispam = new AntiSpam(client, options);
 
 antispam.start();
 antispam.stop();
+antispam.pause();
+antispam.resume();
 antispam.getConfig();
 antispam.setConfig({ flood: { maxMessages: 8 } });
 antispam.getStrikes(guildId, userId);
 antispam.resetUser(guildId, userId);
 antispam.setGuildConfig(guildId, { flood: { maxMessages: 3 } });
+antispam.setChannelConfig(guildId, channelId, { flood: { maxMessages: 12 } });
+antispam.setRoleConfig(roleId, { emojis: { maxEmojis: 40 } });
 antispam.getStats();
 
 const incident = await antispam.analyze(message);
@@ -1173,6 +1414,8 @@ new AntiSpam(client, {
 **Hash real de imágenes:** `images: { hashMode: "content" }`.
 
 **Quitar strikes:** `antispam.resetUser(guildId, userId)`.
+
+**Mute por rol:** `punishment: { addRoleIds: ["ID_MUTE"], timeout: { enabled: false, durationMs: 0, minStrikes: 99 } }`. El rol del bot debe estar por encima del mute.
 
 **Cambiar a strict en caliente**
 
@@ -1211,9 +1454,14 @@ Espera unos segundos entre categorías.
 | Archivo | Sube un `.exe` o `.bat` (aunque sea de mentira) |
 | Zalgo | Texto con muchos diacríticos apilados |
 | Líneas | Un mensaje con más de 15 enters |
+| Hop | El mismo usuario en 5 canales distintos en 8s |
+| Puntuación | `aaaaaaaaaaa` o `!!!!!!!!!!!` |
+| Spoilers | Más de 8 pares `\|\|spoiler\|\|` |
+| Palabra | Activa `words` y manda una de la lista |
+| Ghost ping | Menciona a alguien y borra el mensaje en menos de 15s (`ghostPing.enabled: true`) |
 | Edición | Manda `hola` y edítalo a `Free Nitro https://bit.ly/test` |
 
-En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline`.
+En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost`.
 
 Al segundo strike el ejemplo mete timeout de 1 minuto. Los strikes caducan a los 15 minutos, o usa `resetUser`.
 

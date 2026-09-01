@@ -2,6 +2,7 @@ import {
   PermissionFlagsBits,
   type Client,
   type Message,
+  type PartialMessage,
 } from "discord.js";
 import { mergeDeep, resolveConfig } from "./defaults";
 import { accountDetector } from "./detectors/accounts";
@@ -10,11 +11,16 @@ import { duplicateDetector } from "./detectors/duplicates";
 import { emojiDetector } from "./detectors/emojis";
 import { fileDetector } from "./detectors/files";
 import { floodDetector } from "./detectors/flood";
+import { inspectGhostPing } from "./detectors/ghost";
+import { hopDetector } from "./detectors/hop";
 import { createImageDetector } from "./detectors/images";
 import { lengthDetector } from "./detectors/length";
 import { linkDetector } from "./detectors/links";
 import { mentionDetector } from "./detectors/mentions";
 import { newlineDetector } from "./detectors/newlines";
+import { punctuationDetector } from "./detectors/punctuation";
+import { spoilerDetector } from "./detectors/spoilers";
+import { wordDetector } from "./detectors/words";
 import { zalgoDetector } from "./detectors/zalgo";
 import { applyPunishment } from "./enforcement";
 import { MemoryStore } from "./store/MemoryStore";
@@ -44,9 +50,14 @@ const DETECTOR_TYPES: DetectorType[] = [
   "newline",
   "account",
   "length",
+  "word",
+  "hop",
+  "punctuation",
+  "spoiler",
+  "ghost",
 ];
 
-const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban"];
+const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban", "addRole", "removeRole"];
 
 function emptyStats(): AntiSpamStats {
   return {
@@ -69,6 +80,7 @@ export class AntiSpam {
   private readonly channelConfigs = new Map<string, DeepPartial<ResolvedConfig>>();
   private stats = emptyStats();
   private started = false;
+  private paused = false;
   private cleanupTimer: NodeJS.Timeout | null = null;
 
   private readonly onMessage = (message: Message): void => {
@@ -80,20 +92,28 @@ export class AntiSpam {
     void this.handle(newMessage, true);
   };
 
+  private readonly onDelete = (message: Message | PartialMessage): void => {
+    void this.handleDelete(message);
+  };
+
   constructor(client: Client, options: AntiSpamOptions = {}) {
     this.client = client;
     this.options = options;
-    const { preset, onDetect: _onDetect, onAction: _onAction, onError: _onError, ...configOptions } = options;
+    const { preset, onDetect: _d, onAction: _a, onError: _e, onCooldown: _c, ...configOptions } = options;
     this.config = resolveConfig(preset, configOptions);
     this.detectors = [
       fileDetector,
+      wordDetector,
       floodDetector,
+      hopDetector,
       duplicateDetector,
       linkDetector,
       createImageDetector(this.store),
       mentionDetector,
       zalgoDetector,
       newlineDetector,
+      punctuationDetector,
+      spoilerDetector,
       accountDetector,
       lengthDetector,
       capsDetector,
@@ -101,12 +121,15 @@ export class AntiSpam {
     ];
   }
 
-  /** Starts listening to `messageCreate` (and `messageUpdate` if enabled). */
+  /** Starts listening to `messageCreate` (and `messageUpdate` / `messageDelete` if enabled). */
   start(): this {
     if (this.started) return this;
     this.client.on("messageCreate", this.onMessage);
     if (this.config.checkEdits) {
       this.client.on("messageUpdate", this.onEdit);
+    }
+    if (this.config.checkDeletes) {
+      this.client.on("messageDelete", this.onDelete);
     }
     this.cleanupTimer = setInterval(() => {
       this.store.cleanup(Date.now(), this.maxRetentionMs());
@@ -121,12 +144,28 @@ export class AntiSpam {
     if (!this.started) return this;
     this.client.off("messageCreate", this.onMessage);
     this.client.off("messageUpdate", this.onEdit);
+    this.client.off("messageDelete", this.onDelete);
     if (this.cleanupTimer) {
       clearInterval(this.cleanupTimer);
       this.cleanupTimer = null;
     }
     this.started = false;
     return this;
+  }
+
+  /** Temporarily skip all enforcement without removing listeners. */
+  pause(): this {
+    this.paused = true;
+    return this;
+  }
+
+  resume(): this {
+    this.paused = false;
+    return this;
+  }
+
+  isPaused(): boolean {
+    return this.paused;
   }
 
   /** Adds a custom detector. It runs after the built-in ones. */
@@ -174,6 +213,18 @@ export class AntiSpam {
     this.channelConfigs.delete(`${guildId}:${channelId}`);
   }
 
+  setRoleConfig(roleId: string, patch: DeepPartial<ResolvedConfig>): void {
+    const current = { ...this.config.roleOverrides };
+    current[roleId] = mergeDeep(current[roleId] ?? {}, patch);
+    this.config = mergeDeep(this.config, { roleOverrides: current });
+  }
+
+  clearRoleConfig(roleId: string): void {
+    const current = { ...this.config.roleOverrides };
+    delete current[roleId];
+    this.config = { ...this.config, roleOverrides: current };
+  }
+
   getStrikes(guildId: string, userId: string): number {
     return this.store.getStrikes(
       guildId,
@@ -208,7 +259,7 @@ export class AntiSpam {
     if (this.shouldIgnore(message)) return null;
     if (!message.guild) return null;
 
-    const config = this.configFor(message.guild.id, message.channelId);
+    const config = this.configFor(message.guild.id, message.channelId, message);
     const now = Date.now();
     const snapshot = this.toSnapshot(message, now);
     const history = options.isEdit
@@ -224,7 +275,9 @@ export class AntiSpam {
 
     const detectors = this.orderedDetectors(config).filter((detector) => {
       if (config.disabledDetectors.includes(detector.type)) return false;
-      if (options.isEdit) return detector.type === "link" || detector.type === "mention";
+      if (options.isEdit) {
+        return detector.type === "link" || detector.type === "mention" || detector.type === "word";
+      }
       return true;
     });
 
@@ -247,7 +300,8 @@ export class AntiSpam {
   }
 
   private async handle(message: Message, isEdit: boolean): Promise<void> {
-    const config = message.guild ? this.configFor(message.guild.id, message.channelId) : this.config;
+    if (this.paused) return;
+    const config = message.guild ? this.configFor(message.guild.id, message.channelId, message) : this.config;
     if (!config.enabled) return;
     if (isEdit && !config.checkEdits) return;
     if (this.shouldIgnore(message)) return;
@@ -267,6 +321,7 @@ export class AntiSpam {
         if (config.punishment.deleteDuringCooldown && !config.dryRun && message.deletable) {
           await message.delete().catch((error) => this.options.onError?.(error, "cooldown-delete"));
         }
+        await this.options.onCooldown?.(message);
         return;
       }
 
@@ -296,15 +351,59 @@ export class AntiSpam {
     }
   }
 
+  private async handleDelete(message: Message | PartialMessage): Promise<void> {
+    if (this.paused) return;
+    if (message.partial) return;
+    if (!message.guild) return;
+    const config = this.configFor(message.guild.id, message.channelId, message);
+    if (!config.enabled || !config.checkDeletes) return;
+    if (this.shouldIgnore(message)) return;
+    if (config.disabledDetectors.includes("ghost")) return;
+
+    try {
+      const incident = inspectGhostPing(message, config.ghostPing, Date.now());
+      if (!incident) return;
+
+      this.stats.incidents += 1;
+      this.stats.byType.ghost += 1;
+      await this.options.onDetect?.(incident, message);
+
+      const strikes = this.store.addStrike(
+        incident.guildId,
+        incident.userId,
+        Date.now(),
+        config.punishment.strikeDecayMs,
+      );
+      const result = await applyPunishment(message, incident, strikes, config);
+      this.store.markAction(incident.guildId, incident.userId, Date.now());
+      for (const action of result.applied) {
+        this.stats.actions[action] += 1;
+      }
+      await this.options.onAction?.(result);
+    } catch (error) {
+      this.options.onError?.(error, "handleDelete");
+    }
+  }
+
   shouldIgnore(message: Message): boolean {
-    const config = message.guild ? this.configFor(message.guild.id, message.channelId) : this.config;
+    const config = message.guild ? this.configFor(message.guild.id, message.channelId, message) : this.config;
 
     if (message.author.bot && config.ignoreBots) return true;
     if (message.webhookId && config.ignoreWebhooks) return true;
+    if (message.system && config.ignoreSystem) return true;
     if (!message.guild) return true;
     if (config.ignored.guilds.includes(message.guild.id)) return true;
     if (config.ignored.channels.includes(message.channelId)) return true;
     if (config.ignored.users.includes(message.author.id)) return true;
+
+    if (config.ignoreThreads && "isThread" in message.channel && typeof message.channel.isThread === "function" && message.channel.isThread()) {
+      return true;
+    }
+
+    const trimmed = message.content.trimStart();
+    if (config.ignored.prefixes.some((prefix) => prefix && trimmed.startsWith(prefix))) {
+      return true;
+    }
 
     const parentId = "parentId" in message.channel ? message.channel.parentId : null;
     if (parentId && config.ignored.categories.includes(parentId)) return true;
@@ -328,10 +427,20 @@ export class AntiSpam {
     return false;
   }
 
-  private configFor(guildId: string, channelId?: string): ResolvedConfig {
+  private configFor(guildId: string, channelId?: string, message?: Message): ResolvedConfig {
     let resolved = this.config;
     const guildPatch = this.guildConfigs.get(guildId);
     if (guildPatch) resolved = mergeDeep(resolved, guildPatch);
+
+    const member = message?.member;
+    if (member) {
+      for (const [roleId, patch] of Object.entries(resolved.roleOverrides)) {
+        if (member.roles.cache.has(roleId) && patch) {
+          resolved = mergeDeep(resolved, patch);
+        }
+      }
+    }
+
     if (channelId && resolved.channelOverrides[channelId]) {
       resolved = mergeDeep(resolved, resolved.channelOverrides[channelId]);
     }
@@ -369,6 +478,7 @@ export class AntiSpam {
       config.images.windowMs,
       config.punishment.strikeDecayMs,
       config.punishment.cooldownMs,
+      config.hop.windowMs,
     ];
     return Math.max(30_000, ...windows);
   }

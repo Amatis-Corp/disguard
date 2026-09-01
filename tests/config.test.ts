@@ -19,6 +19,22 @@ describe("resolveConfig", () => {
     expect(config.links.blockInvites).toBe(true);
     expect(config.links.blockList).toEqual(["evil.test"]);
     expect(config.links.blockShorteners).toBe(true);
+    expect(config.ghostPing.enabled).toBe(true);
+    expect(config.hop.maxChannels).toBe(3);
+  });
+
+  it("incluye defaults 1.3.0", () => {
+    const config = resolveConfig("balanced");
+    expect(config.words.enabled).toBe(false);
+    expect(config.hop.enabled).toBe(true);
+    expect(config.punctuation.maxRepeated).toBe(10);
+    expect(config.spoilers.maxSpoilers).toBe(8);
+    expect(config.ghostPing.enabled).toBe(false);
+    expect(config.checkDeletes).toBe(true);
+    expect(config.ignoreSystem).toBe(true);
+    expect(config.links.blockOauth).toBe(true);
+    expect(config.ignored.prefixes).toEqual([]);
+    expect(config.punishment.addRoleIds).toEqual([]);
   });
 });
 

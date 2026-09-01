@@ -28,6 +28,18 @@ export const fileDetector: Detector = {
     for (const attachment of message.attachments.values()) {
       const name = attachment.name ?? "";
       const ext = name.includes(".") ? name.split(".").pop()?.toLowerCase() ?? "" : "";
+
+      if (rules.maxBytes > 0 && attachment.size > rules.maxBytes) {
+        return createIncident("file", snapshot, {
+          userId: message.author.id,
+          guildId: message.guild.id,
+          severity: rules.severity,
+          reason: `Archivo demasiado grande (${attachment.size} / ${rules.maxBytes} bytes)`,
+          details: { name, size: attachment.size },
+          recommendedActions: ["delete", "warn"],
+        });
+      }
+
       if (!ext || !blocked.has(ext)) continue;
 
       return createIncident("file", snapshot, {

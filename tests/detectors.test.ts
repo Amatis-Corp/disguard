@@ -167,6 +167,11 @@ describe("AntiSpam", () => {
       newlines: { enabled: false },
       accounts: { enabled: false },
       length: { enabled: false },
+      words: { enabled: false },
+      hop: { enabled: false },
+      punctuation: { enabled: false },
+      spoilers: { enabled: false },
+      ghostPing: { enabled: false },
     });
 
     expect(await antispam.analyze(fakeMessage({ id: "1", content: "uno" }))).toBeNull();
@@ -247,6 +252,11 @@ describe("1.2.0 options", () => {
       newlines: { enabled: false },
       accounts: { enabled: false },
       length: { enabled: false },
+      words: { enabled: false },
+      hop: { enabled: false },
+      punctuation: { enabled: false },
+      spoilers: { enabled: false },
+      ghostPing: { enabled: false },
     });
     expect(await antispam.analyze(fakeMessage({ id: "x", content: "solo" }))).toBeNull();
   });
@@ -294,5 +304,198 @@ describe("cooldown store", () => {
     expect(antispam.isCoolingDown("guild-1", "user-1")).toBe(false);
     antispam.store.markAction("guild-1", "user-1", Date.now());
     expect(antispam.isCoolingDown("guild-1", "user-1")).toBe(true);
+  });
+});
+
+describe("1.3.0 detectors", () => {
+  it("bloquea palabras de la lista", async () => {
+    const { wordDetector } = await import("../src/detectors/words");
+    const config = resolveConfig("balanced", {
+      words: { enabled: true, list: ["raid-now"], matchWholeWord: true, ignoreCase: true },
+    });
+    const content = "vamos raid-now ya";
+    const incident = wordDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+        config,
+      }),
+    );
+    expect(incident?.type).toBe("word");
+    expect(incident?.details).toMatchObject({ word: "raid-now" });
+  });
+
+  it("respeta matchWholeWord", async () => {
+    const { wordDetector } = await import("../src/detectors/words");
+    const config = resolveConfig("balanced", {
+      words: { enabled: true, list: ["raid"], matchWholeWord: true },
+    });
+    const content = "braiding the rope";
+    const incident = wordDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+        config,
+      }),
+    );
+    expect(incident).toBeNull();
+  });
+
+  it("detecta salto de canales", async () => {
+    const { hopDetector } = await import("../src/detectors/hop");
+    const now = 1_000_000;
+    const history = ["c1", "c2", "c3", "c4", "c5"].map((channelId, index) => ({
+      ...snapshot(`msg ${index}`, String(index), now - 100),
+      channelId,
+    }));
+    const incident = hopDetector.inspect(
+      input({
+        message: fakeMessage({ channelId: "c5" }),
+        snapshot: history[4],
+        history,
+        now,
+        config: resolveConfig("balanced", { hop: { maxChannels: 5, windowMs: 8_000 } }),
+      }),
+    );
+    expect(incident?.type).toBe("hop");
+  });
+
+  it("detecta caracteres repetidos", async () => {
+    const { punctuationDetector } = await import("../src/detectors/punctuation");
+    const content = "aaaaaaaaaaa";
+    const incident = punctuationDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+      }),
+    );
+    expect(incident?.type).toBe("punctuation");
+  });
+
+  it("detecta demasiados spoilers", async () => {
+    const { spoilerDetector } = await import("../src/detectors/spoilers");
+    const content = "||a||||b||||c||||d||||e||||f||||g||||h||||i||";
+    const incident = spoilerDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+      }),
+    );
+    expect(incident?.type).toBe("spoiler");
+  });
+
+  it("detecta ghost ping al borrar", async () => {
+    const { inspectGhostPing } = await import("../src/detectors/ghost");
+    const users = new Map([["victim", { id: "victim" }]]);
+    const incident = inspectGhostPing(
+      fakeMessage({
+        mentions: { everyone: false, users, roles: new Map() },
+        createdTimestamp: Date.now() - 1_000,
+      }),
+      { enabled: true, minMentions: 1, maxAgeMs: 15_000, severity: "high" },
+      Date.now(),
+    );
+    expect(incident?.type).toBe("ghost");
+  });
+
+  it("bloquea enlaces oauth fuera de la allowList", () => {
+    const config = resolveConfig("balanced", { links: { blockOauth: true } });
+    const content = "https://evil.test/oauth/authorize?client_id=1";
+    const incident = linkDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+        config,
+      }),
+    );
+    expect(incident?.type).toBe("link");
+    expect(incident?.reason).toMatch(/oauth|login/i);
+  });
+
+  it("permite oauth en discord.com por allowList", () => {
+    const config = resolveConfig("balanced", { links: { detectPhishingKeywords: false } });
+    const content = "https://discord.com/oauth2/authorize?client_id=1";
+    const incident = linkDetector.inspect(
+      input({
+        message: fakeMessage({ content }),
+        snapshot: snapshot(content),
+        config,
+      }),
+    );
+    expect(incident).toBeNull();
+  });
+
+  it("limita el tamaño de adjuntos", async () => {
+    const { fileDetector } = await import("../src/detectors/files");
+    const config = resolveConfig("balanced", { files: { maxBytes: 100 } });
+    const attachments = new Map([
+      ["1", { name: "foto.png", size: 500, contentType: "image/png" }],
+    ]);
+    const incident = fileDetector.inspect(
+      input({
+        message: fakeMessage({ attachments }),
+        snapshot: snapshot(""),
+        config,
+      }),
+    );
+    expect(incident?.type).toBe("file");
+    expect(incident?.reason).toMatch(/grande/i);
+  });
+
+  it("detecta miembros nuevos en el servidor", async () => {
+    const { accountDetector } = await import("../src/detectors/accounts");
+    const now = Date.now();
+    const config = resolveConfig("balanced", {
+      accounts: { enabled: true, minAgeDays: 0, minGuildAgeDays: 7, blockDefaultAvatar: false },
+    });
+    const incident = accountDetector.inspect(
+      input({
+        message: fakeMessage({
+          author: { id: "user-1", bot: false, createdTimestamp: now - 400 * 24 * 60 * 60 * 1000, avatar: "abc" },
+          member: {
+            id: "user-1",
+            joinedTimestamp: now - 60 * 60 * 1000,
+            permissions: { has: () => false },
+            roles: { cache: new Map() },
+          },
+        }),
+        snapshot: snapshot("hola"),
+        config,
+        now,
+      }),
+    );
+    expect(incident?.type).toBe("account");
+    expect(incident?.reason).toMatch(/servidor/i);
+  });
+});
+
+describe("1.3.0 AntiSpam", () => {
+  it("ignora prefijos de comando", () => {
+    const antispam = new AntiSpam(fakeClient(), { ignored: { prefixes: ["!", "/"] } });
+    expect(antispam.shouldIgnore(fakeMessage({ content: "!help" }))).toBe(true);
+    expect(antispam.shouldIgnore(fakeMessage({ content: "hola" }))).toBe(false);
+  });
+
+  it("pausa y reanuda la aplicación", () => {
+    const antispam = new AntiSpam(fakeClient());
+    expect(antispam.isPaused()).toBe(false);
+    antispam.pause();
+    expect(antispam.isPaused()).toBe(true);
+    antispam.resume();
+    expect(antispam.isPaused()).toBe(false);
+  });
+
+  it("aplica override por rol", () => {
+    const antispam = new AntiSpam(fakeClient());
+    antispam.setRoleConfig("vip", { flood: { maxMessages: 20 } });
+    const vip = fakeMessage({
+      member: {
+        id: "user-1",
+        permissions: { has: () => false },
+        roles: { cache: new Map([["vip", { id: "vip" }]]) },
+      },
+    });
+    expect(antispam.shouldIgnore(vip)).toBe(false);
+    expect(antispam.getConfig().roleOverrides.vip?.flood?.maxMessages).toBe(20);
   });
 });

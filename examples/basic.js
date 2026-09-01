@@ -27,9 +27,11 @@ const antispam = new AntiSpam(client, {
   locale: "es",
   dryRun: false,
   ignorePermissions: ["ManageMessages"],
+  ignoreThreads: false,
   ignored: {
     roles: ["ID_ROL_STAFF"],
     channels: ["ID_CANAL_BOTS"],
+    prefixes: ["!", "/", "."],
   },
   flood: {
     maxMessages: 5,
@@ -41,6 +43,7 @@ const antispam = new AntiSpam(client, {
   },
   links: {
     blockInvites: false,
+    blockOauth: true,
     allowList: ["youtube.com", "github.com"],
     blockList: ["malicioso.ejemplo"],
   },
@@ -50,10 +53,27 @@ const antispam = new AntiSpam(client, {
   },
   files: {
     blockedExtensions: ["exe", "bat", "cmd", "scr", "dll", "msi"],
+    maxBytes: 0,
+  },
+  words: {
+    enabled: false,
+    list: ["raid-now"],
+    regex: [],
+  },
+  hop: {
+    enabled: true,
+    maxChannels: 5,
+    windowMs: 8000,
+  },
+  ghostPing: {
+    enabled: false,
+    minMentions: 1,
+    maxAgeMs: 15_000,
   },
   accounts: {
     enabled: false,
     minAgeDays: 3,
+    minGuildAgeDays: 0,
   },
   punishment: {
     deleteMessage: true,
@@ -62,6 +82,8 @@ const antispam = new AntiSpam(client, {
     timeout: { enabled: true, durationMs: 60_000, minStrikes: 2, scale: "none" },
     cooldownMs: 8_000,
     deleteDuringCooldown: true,
+    addRoleIds: [],
+    removeRoleIds: [],
     logChannelId: null,
   },
   onDetect(incident) {
@@ -69,6 +91,9 @@ const antispam = new AntiSpam(client, {
   },
   onAction(result) {
     console.log("[action]", result.applied, result.skipped);
+  },
+  onCooldown(message) {
+    console.log("[cooldown]", message.author.id);
   },
 });
 

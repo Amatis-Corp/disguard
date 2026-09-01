@@ -12,7 +12,12 @@ export type DetectorType =
   | "zalgo"
   | "newline"
   | "account"
-  | "length";
+  | "length"
+  | "word"
+  | "hop"
+  | "punctuation"
+  | "spoiler"
+  | "ghost";
 
 export type Locale = "en" | "es";
 
@@ -20,7 +25,7 @@ export type TimeoutScale = "none" | "linear" | "exponential";
 
 export type Severity = "low" | "medium" | "high" | "critical";
 
-export type ActionType = "delete" | "warn" | "timeout" | "kick" | "ban";
+export type ActionType = "delete" | "warn" | "timeout" | "kick" | "ban" | "addRole" | "removeRole";
 
 export type ImageHashMode = "meta" | "content";
 
@@ -70,6 +75,8 @@ export interface IgnoreLists {
   channels: string[];
   categories: string[];
   guilds: string[];
+  /** Skip messages that start with these prefixes (`!`, `/`, `.`). */
+  prefixes: string[];
 }
 
 export interface FloodConfig {
@@ -118,6 +125,8 @@ export interface LinkConfig {
   maxLinks: number;
   /** Also scan embed title/description/fields. */
   scanEmbeds: boolean;
+  /** Flag non-allowlisted URLs whose path looks like OAuth/login. */
+  blockOauth: boolean;
   severity: Severity;
 }
 
@@ -178,6 +187,8 @@ export interface FileConfig {
   enabled: boolean;
   /** Extensiones bloqueadas, con o sin punto: `exe`, `.bat`. */
   blockedExtensions: string[];
+  /** Max attachment size in bytes. 0 = unlimited. */
+  maxBytes: number;
   severity: Severity;
 }
 
@@ -200,12 +211,52 @@ export interface AccountConfig {
   minAgeDays: number;
   /** Flag users still using the default Discord avatar. */
   blockDefaultAvatar: boolean;
+  /** Minimum days the member must have been in this guild. 0 = off. */
+  minGuildAgeDays: number;
   severity: Severity;
 }
 
 export interface LengthConfig {
   enabled: boolean;
   maxCharacters: number;
+  severity: Severity;
+}
+
+export interface WordConfig {
+  enabled: boolean;
+  list: string[];
+  regex: string[];
+  ignoreCase: boolean;
+  matchWholeWord: boolean;
+  severity: Severity;
+}
+
+export interface HopConfig {
+  enabled: boolean;
+  /** Unique channels posted in during the window. */
+  maxChannels: number;
+  windowMs: number;
+  severity: Severity;
+}
+
+export interface PunctuationConfig {
+  enabled: boolean;
+  /** `aaaaaa` / `!!!!!!` longer than this is flagged. */
+  maxRepeated: number;
+  severity: Severity;
+}
+
+export interface SpoilerConfig {
+  enabled: boolean;
+  maxSpoilers: number;
+  severity: Severity;
+}
+
+export interface GhostPingConfig {
+  enabled: boolean;
+  minMentions: number;
+  /** Only if the message is deleted within this time. 0 = any age. */
+  maxAgeMs: number;
   severity: Severity;
 }
 
@@ -246,8 +297,12 @@ export interface PunishmentConfig {
    */
   cooldownMs: number;
   deleteDuringCooldown: boolean;
-  /** Send the warning as an embed instead of plain text. */
   warnAsEmbed: boolean;
+  /** Roles to add on punish (mute role, etc.). */
+  addRoleIds: string[];
+  /** Roles to remove on punish. */
+  removeRoleIds: string[];
+  minStrikesForRoles: number;
 }
 
 export interface ResolvedConfig {
@@ -276,15 +331,22 @@ export interface ResolvedConfig {
   newlines: NewlineConfig;
   accounts: AccountConfig;
   length: LengthConfig;
+  words: WordConfig;
+  hop: HopConfig;
+  punctuation: PunctuationConfig;
+  spoilers: SpoilerConfig;
+  ghostPing: GhostPingConfig;
   punishment: PunishmentConfig;
   checkEdits: boolean;
+  /** Listen for `messageDelete` (ghost pings). */
+  checkDeletes: boolean;
+  ignoreThreads: boolean;
+  ignoreSystem: boolean;
   cleanupIntervalMs: number;
-  /** Skip these detectors even if their `enabled` flag is true. */
   disabledDetectors: DetectorType[];
-  /** Custom run order. Empty = built-in order. */
   detectorOrder: DetectorType[];
-  /** Per-channel patches keyed by channel snowflake. */
   channelOverrides: Record<string, DeepPartial<ResolvedConfig>>;
+  roleOverrides: Record<string, DeepPartial<ResolvedConfig>>;
 }
 
 export interface AntiSpamStats {
@@ -300,6 +362,7 @@ export interface AntiSpamOptions extends DeepPartial<ResolvedConfig> {
   onDetect?: (incident: Incident, message: Message) => void | Promise<void>;
   onAction?: (result: ActionResult) => void | Promise<void>;
   onError?: (error: unknown, context: string) => void;
+  onCooldown?: (message: Message) => void | Promise<void>;
 }
 
 export interface AnalyzeContext {

@@ -19,6 +19,20 @@ export const accountDetector: Detector = {
       });
     }
 
+    if (rules.minGuildAgeDays > 0 && message.member?.joinedTimestamp) {
+      const guildAgeDays = (now - message.member.joinedTimestamp) / DAY_MS;
+      if (guildAgeDays < rules.minGuildAgeDays) {
+        return createIncident("account", snapshot, {
+          userId: message.author.id,
+          guildId: message.guild.id,
+          severity: rules.severity,
+          reason: `Miembro demasiado nuevo en el servidor (${guildAgeDays.toFixed(1)} / ${rules.minGuildAgeDays} días)`,
+          details: { guildAgeDays, minGuildAgeDays: rules.minGuildAgeDays },
+          recommendedActions: ["delete", "warn"],
+        });
+      }
+    }
+
     const created = message.author.createdTimestamp;
     if (!created) return null;
 
