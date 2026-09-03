@@ -105,6 +105,8 @@ const BASE: ResolvedConfig = {
     enabled: true,
     maxEmojis: 12,
     maxStickers: 3,
+    maxInWindow: 0,
+    windowMs: 10_000,
     severity: "low",
   },
   files: {
@@ -122,6 +124,7 @@ const BASE: ResolvedConfig = {
       "jar",
       "apk",
     ],
+    allowedExtensions: [],
     maxBytes: 0,
     severity: "critical",
   },
@@ -205,6 +208,27 @@ const BASE: ResolvedConfig = {
     windowMs: 10_000,
     severity: "medium",
   },
+  replies: {
+    enabled: true,
+    maxReplies: 6,
+    windowMs: 8_000,
+    severity: "medium",
+  },
+  blank: {
+    enabled: true,
+    severity: "low",
+  },
+  embeds: {
+    enabled: true,
+    maxEmbeds: 6,
+    severity: "low",
+  },
+  raid: {
+    enabled: false,
+    maxUsers: 8,
+    windowMs: 6_000,
+    severity: "high",
+  },
   punishment: {
     deleteMessage: true,
     warnUser: true,
@@ -243,11 +267,14 @@ const BASE: ResolvedConfig = {
   ignoreSystem: true,
   ignorePinned: false,
   ignoreOlderThanMs: 0,
+  ignoreNsfw: false,
+  graceMessages: 0,
   cleanupIntervalMs: 60_000,
   disabledDetectors: [],
   detectorOrder: [],
   channelOverrides: {},
   roleOverrides: {},
+  userOverrides: {},
 };
 
 const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
@@ -266,6 +293,9 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
     invisible: { enabled: false },
     echo: { enabled: false },
     attach: { maxAttachments: 15 },
+    replies: { enabled: false },
+    blank: { enabled: false },
+    raid: { enabled: false },
     links: {
       blockInvites: false,
       blockShorteners: false,
@@ -299,6 +329,9 @@ const PRESET_OVERRIDES: Record<PresetName, DeepPartial<ResolvedConfig>> = {
     echo: { maxChannels: 2, windowMs: 8_000 },
     invisible: { maxInvisible: 4 },
     attach: { maxAttachments: 5 },
+    raid: { enabled: true, maxUsers: 6, windowMs: 5_000 },
+    replies: { maxReplies: 4 },
+    embeds: { maxEmbeds: 4 },
     punishment: {
       timeout: { enabled: true, durationMs: 5 * 60_000, minStrikes: 1, scale: "linear" },
       kick: { enabled: false, minStrikes: 4 },

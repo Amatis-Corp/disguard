@@ -40,7 +40,24 @@ export const fileDetector: Detector = {
         });
       }
 
-      if (!ext || !blocked.has(ext)) continue;
+      if (!ext || !blocked.has(ext)) {
+        if (rules.allowedExtensions.length > 0) {
+          const allowed = new Set(
+            rules.allowedExtensions.map((item) => item.replace(/^\./, "").toLowerCase()),
+          );
+          if (!ext || !allowed.has(ext)) {
+            return createIncident("file", snapshot, {
+              userId: message.author.id,
+              guildId: message.guild.id,
+              severity: rules.severity,
+              reason: ext ? `Extensión no permitida: .${ext}` : "Adjunto sin extensión no permitido",
+              details: { name, extension: ext, size: attachment.size },
+              recommendedActions: ["delete", "warn"],
+            });
+          }
+        }
+        continue;
+      }
 
       return createIncident("file", snapshot, {
         userId: message.author.id,

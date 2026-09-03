@@ -79,6 +79,17 @@ const antispam = new AntiSpam(client, {
     maxChannels: 3,
     windowMs: 12_000,
   },
+  replies: {
+    maxReplies: 6,
+    windowMs: 8_000,
+  },
+  raid: {
+    enabled: false,
+    maxUsers: 8,
+    windowMs: 6_000,
+  },
+  graceMessages: 0,
+  ignoreNsfw: false,
   accounts: {
     enabled: false,
     minAgeDays: 3,

@@ -13,9 +13,16 @@ interface ImageHit {
   timestamp: number;
 }
 
+interface ChannelHit {
+  key: string;
+  userId: string;
+  timestamp: number;
+}
+
 export class MemoryStore {
   private readonly users = new Map<string, UserBucket>();
   private readonly images: ImageHit[] = [];
+  private readonly channelHits: ChannelHit[] = [];
 
   userKey(guildId: string, userId: string): string {
     return `${guildId}:${userId}`;
@@ -101,6 +108,21 @@ export class MemoryStore {
     this.users.delete(this.userKey(guildId, userId));
   }
 
+  pushChannelActivity(guildId: string, channelId: string, userId: string, timestamp: number): void {
+    this.channelHits.push({ key: `${guildId}:${channelId}`, userId, timestamp });
+  }
+
+  countUniqueUsers(guildId: string, channelId: string, now: number, windowMs: number): number {
+    const key = `${guildId}:${channelId}`;
+    const users = new Set<string>();
+    for (const hit of this.channelHits) {
+      if (hit.key !== key) continue;
+      if (now - hit.timestamp > windowMs) continue;
+      users.add(hit.userId);
+    }
+    return users.size;
+  }
+
   cleanup(now: number, maxAgeMs: number): void {
     for (const [key, bucket] of this.users) {
       this.pruneUser(bucket, now, maxAgeMs);
@@ -114,6 +136,12 @@ export class MemoryStore {
     for (let i = this.images.length - 1; i >= 0; i -= 1) {
       if (now - this.images[i].timestamp > maxAgeMs) {
         this.images.splice(i, 1);
+      }
+    }
+
+    for (let i = this.channelHits.length - 1; i >= 0; i -= 1) {
+      if (now - this.channelHits[i].timestamp > maxAgeMs) {
+        this.channelHits.splice(i, 1);
       }
     }
   }

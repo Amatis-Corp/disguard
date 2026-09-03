@@ -29,6 +29,9 @@ export function inspectGhostPing(
     attachmentHashes: [],
     attachmentCount: 0,
     mentionCount: 0,
+    isReply: false,
+    emojiCount: 0,
+    embedCount: 0,
   };
 
   return createIncident("ghost", snapshot, {

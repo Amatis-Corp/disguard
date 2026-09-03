@@ -18,6 +18,9 @@ function snapshot(content: string, id = "1", timestamp = Date.now()): MessageSna
     attachmentHashes: [],
     attachmentCount: 0,
     mentionCount: 0,
+    isReply: false,
+    emojiCount: 0,
+    embedCount: 0,
   };
 }
 
@@ -26,6 +29,7 @@ function input(partial: Partial<DetectorInput> & Pick<DetectorInput, "message" |
     history: [],
     config: resolveConfig("balanced"),
     now: Date.now(),
+    uniqueUsersInChannel: 0,
     ...partial,
   };
 }
@@ -178,6 +182,10 @@ describe("AntiSpam", () => {
       echo: { enabled: false },
       secrets: { enabled: false },
       attach: { enabled: false },
+      replies: { enabled: false },
+      blank: { enabled: false },
+      embeds: { enabled: false },
+      raid: { enabled: false },
     });
 
     expect(await antispam.analyze(fakeMessage({ id: "1", content: "uno" }))).toBeNull();
@@ -267,6 +275,10 @@ describe("1.2.0 options", () => {
       echo: { enabled: false },
       secrets: { enabled: false },
       attach: { enabled: false },
+      replies: { enabled: false },
+      blank: { enabled: false },
+      embeds: { enabled: false },
+      raid: { enabled: false },
     });
     expect(await antispam.analyze(fakeMessage({ id: "x", content: "solo" }))).toBeNull();
   });
@@ -632,5 +644,133 @@ describe("1.4.0 detectors", () => {
         }),
       )?.type,
     ).toBe("account");
+  });
+});
+
+describe("1.5.0 detectors", () => {
+  it("detecta respuestas en ráfaga", async () => {
+    const { replyDetector } = await import("../src/detectors/replies");
+    const now = 1_000_000;
+    const history = Array.from({ length: 6 }, (_, index) => ({
+      ...snapshot(`r ${index}`, String(index), now - 10),
+      isReply: true,
+    }));
+    const incident = replyDetector.inspect(
+      input({
+        message: fakeMessage({ content: "r 5", reference: { messageId: "parent" } }),
+        snapshot: history[5],
+        history,
+        now,
+        config: resolveConfig("balanced", { replies: { maxReplies: 6, windowMs: 8_000 } }),
+      }),
+    );
+    expect(incident?.type).toBe("reply");
+  });
+
+  it("detecta mensajes vacíos", async () => {
+    const { blankDetector } = await import("../src/detectors/blank");
+    const incident = blankDetector.inspect(
+      input({
+        message: fakeMessage({ content: "   " }),
+        snapshot: snapshot("   "),
+      }),
+    );
+    expect(incident?.type).toBe("blank");
+  });
+
+  it("detecta demasiados embeds", async () => {
+    const { embedDetector } = await import("../src/detectors/embed");
+    const embeds = Array.from({ length: 8 }, () => ({ description: "x" }));
+    const incident = embedDetector.inspect(
+      input({
+        message: fakeMessage({ content: "", embeds }),
+        snapshot: snapshot(""),
+        config: resolveConfig("balanced", { embeds: { maxEmbeds: 6 } }),
+      }),
+    );
+    expect(incident?.type).toBe("embed");
+  });
+
+  it("detecta raid de canal", async () => {
+    const { raidDetector } = await import("../src/detectors/raid");
+    const incident = raidDetector.inspect(
+      input({
+        message: fakeMessage(),
+        snapshot: snapshot("hola"),
+        uniqueUsersInChannel: 8,
+        config: resolveConfig("balanced", { raid: { enabled: true, maxUsers: 8 } }),
+      }),
+    );
+    expect(incident?.type).toBe("raid");
+  });
+
+  it("respeta allowlist de extensiones", async () => {
+    const { fileDetector } = await import("../src/detectors/files");
+    const config = resolveConfig("balanced", { files: { allowedExtensions: ["png", "jpg"], blockedExtensions: [] } });
+    const zip = fileDetector.inspect(
+      input({
+        message: fakeMessage({
+          attachments: new Map([["1", { name: "pack.zip", size: 10, contentType: "application/zip" }]]),
+        }),
+        snapshot: snapshot(""),
+        config,
+      }),
+    );
+    expect(zip?.type).toBe("file");
+    const png = fileDetector.inspect(
+      input({
+        message: fakeMessage({
+          attachments: new Map([["1", { name: "cat.png", size: 10, contentType: "image/png" }]]),
+        }),
+        snapshot: snapshot(""),
+        config,
+      }),
+    );
+    expect(png).toBeNull();
+  });
+
+  it("ignora canales nsfw", () => {
+    const antispam = new AntiSpam(fakeClient(), { ignoreNsfw: true });
+    expect(antispam.shouldIgnore(fakeMessage({ channel: { parentId: null, nsfw: true } }))).toBe(true);
+  });
+
+  it("aplica override por usuario", () => {
+    const antispam = new AntiSpam(fakeClient());
+    antispam.setUserConfig("user-1", { flood: { maxMessages: 20 } });
+    expect(antispam.getConfig().userOverrides["user-1"]?.flood?.maxMessages).toBe(20);
+  });
+
+  it("usa graceMessages para no pillar flood al llegar", async () => {
+    const antispam = new AntiSpam(fakeClient(), {
+      graceMessages: 3,
+      flood: { maxMessages: 1, windowMs: 10_000 },
+      duplicates: { enabled: false },
+      links: { enabled: false },
+      images: { enabled: false },
+      mentions: { enabled: false },
+      caps: { enabled: false },
+      emojis: { enabled: false },
+      files: { enabled: false },
+      zalgo: { enabled: false },
+      newlines: { enabled: false },
+      accounts: { enabled: false },
+      length: { enabled: false },
+      words: { enabled: false },
+      hop: { enabled: false },
+      punctuation: { enabled: false },
+      spoilers: { enabled: false },
+      ghostPing: { enabled: false },
+      invisible: { enabled: false },
+      echo: { enabled: false },
+      secrets: { enabled: false },
+      attach: { enabled: false },
+      replies: { enabled: false },
+      blank: { enabled: false },
+      embeds: { enabled: false },
+      raid: { enabled: false },
+    });
+    expect(await antispam.analyze(fakeMessage({ id: "1", content: "uno" }))).toBeNull();
+    expect(await antispam.analyze(fakeMessage({ id: "2", content: "dos" }))).toBeNull();
+    expect(await antispam.analyze(fakeMessage({ id: "3", content: "tres" }))).toBeNull();
   });
 });

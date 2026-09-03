@@ -1,6 +1,6 @@
 {
   "name": "@amatiscorp/disguard",
-  "version": "1.4.0",
+  "version": "1.5.0",
   "description": "Configurable antispam for discord.js bots: flood, secrets, channel hop, phishing, ghost pings, and more.",
   "keywords": [
     "disguard",

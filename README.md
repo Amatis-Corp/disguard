@@ -33,6 +33,40 @@ Detects flood, leaked tokens/webhooks, channel hopping, blocked words, phishing,
 
 # English
 
+## What's new in 1.5.0
+
+Channel raids, reply spam, empty messages, embed walls, file allowlists, and per-user overlays. Kick/ban stay **off**. `raid` is **off** in `balanced` so busy servers do not false-positive.
+
+| Option | Default | What it does |
+| --- | --- | --- |
+| `replies` | **on**, 6 / 8s | Too many Discord **replies** in a short window (reply ping / bump spam). |
+| `blank` | **on** | Empty or whitespace-only messages (no files/stickers/embeds). |
+| `embeds` | **on**, 6 | Too many embeds in one message. |
+| `raid` | **off** (`strict`: on, 6 users / 5s) | Too many **distinct users** posting in the **same channel** at once. |
+| `files.allowedExtensions` | `[]` | If set, only those extensions are allowed (after the blocklist). |
+| `emojis.maxInWindow` | `0` (off) | Cap emojis+stickers across several messages. |
+| `ignoreNsfw` | `false` | Skip NSFW channels. |
+| `graceMessages` | `0` | First N messages from a user only run file/secret/link/word (say hi without flood). |
+| `userOverrides` / `setUserConfig` | `{}` | Per-user config overlay (after roles, before channel). |
+
+```js
+const antispam = new AntiSpam(client, {
+  preset: "balanced",
+  replies: { maxReplies: 5, windowMs: 8_000 },
+  blank: { enabled: true },
+  embeds: { maxEmbeds: 6 },
+  raid: { enabled: true, maxUsers: 8, windowMs: 6_000 },
+  files: { allowedExtensions: ["png", "jpg", "webp", "gif"] },
+  graceMessages: 2,
+  ignoreNsfw: true,
+  emojis: { maxInWindow: 30, windowMs: 10_000 },
+});
+
+antispam.setUserConfig("KNOWN_SPAMMER_ID", { flood: { maxMessages: 2 } });
+```
+
+Turn `raid` on only if you want a busy general chat to trip when many people post at once (join raids). For a meme channel, leave it off or raise `maxUsers`.
+
 ## What's new in 1.4.0
 
 Secret scanning, cross-channel copy-paste, invisible unicode, attachment floods, and cleaner logs. Kick/ban stay **off**.
@@ -208,6 +242,7 @@ console.log(antispam.getStats());
 
 ## Table of contents
 
+- [What's new in 1.5.0](#whats-new-in-150)
 - [What's new in 1.4.0](#whats-new-in-140)
 - [What's new in 1.3.0](#whats-new-in-130)
 - [What's new in 1.2.0](#whats-new-in-120)
@@ -254,6 +289,10 @@ console.log(antispam.getStats());
 | **echo** | Same text pasted in several channels |
 | **invisible** | Zero-width / bidi obfuscation |
 | **attach** | Attachment floods over a sliding window |
+| **reply** | Too many replies in a short window |
+| **blank** | Empty / whitespace-only messages |
+| **embed** | Too many embeds in one message |
+| **raid** | Many distinct users posting in one channel (off by default) |
 
 Also included:
 
@@ -388,7 +427,7 @@ Enable **Message Content Intent** in the [Discord Developer Portal](https://disc
 
 1. Ignores bots, webhooks, system messages, the owner, administrators, command prefixes, and anything in your ignore lists.
 2. Keeps a short **in-memory** history per user and guild (no database).
-3. Runs detectors in this order: files → secrets → words → flood → hop → echo → duplicates → attachments → links → images → mentions → zalgo → newlines → punctuation → spoilers → invisible → accounts → length → caps → emojis. The first match wins.
+3. Runs detectors in this order: files → secrets → words → flood → hop → echo → duplicates → attachments → raid → replies → blank → embeds → links → images → mentions → zalgo → newlines → punctuation → spoilers → invisible → accounts → length → caps → emojis. The first match wins.
 4. Adds one strike (with optional decay) and applies the configured punishment.
 5. Message edits re-check **links**, **mentions**, **words**, **secrets**, and **invisible**.
 6. Deletes can trigger **ghost** pings if `ghostPing.enabled` is true.
@@ -749,7 +788,7 @@ new AntiSpam(client, {
   type: "flood" | "duplicate" | "link" | "image" | "mention" | "caps" | "emoji"
     | "file" | "zalgo" | "newline" | "account" | "length"
     | "word" | "hop" | "punctuation" | "spoiler" | "ghost"
-    | "secret" | "echo" | "invisible" | "attach",
+    | "secret" | "echo" | "invisible" | "attach" | "reply" | "blank" | "embed" | "raid",
   severity: "low" | "medium" | "high" | "critical",
   userId: string,
   guildId: string,
@@ -804,6 +843,8 @@ antispam.setChannelConfig(guildId, channelId, { images: { maxRepeats: 8 } });
 antispam.getChannelConfig(guildId, channelId);
 antispam.clearChannelConfig(guildId, channelId);
 antispam.setRoleConfig(roleId, { flood: { maxMessages: 12 } });
+antispam.setUserConfig(userId, { flood: { maxMessages: 2 } });
+antispam.clearUserConfig(userId);
 antispam.clearRoleConfig(roleId);
 
 antispam.use(customDetector);
@@ -964,6 +1005,10 @@ Wait a few seconds between categories so flood does not eat the next test.
 | Echo | Same long sentence in 3 channels within 12s |
 | Invisible | A message padded with many zero-width spaces |
 | Attachments | 8+ files in 10 seconds |
+| Replies | Reply to someone 6 times in 8s |
+| Blank | A message with only spaces |
+| Embeds | A webhook-style dump with 7+ embeds |
+| Raid | Enable `raid` and have 8 people post in the same channel in 6s |
 | Edit | Send `hello`, then edit it to `Free Nitro https://bit.ly/test` |
 
 Watch the terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost|secret|echo|invisible|attach`.
@@ -1006,6 +1051,32 @@ MIT
 ---
 
 # Español
+
+## Novedades de 1.5.0
+
+Raids de canal, spam de replies, mensajes vacíos, paredes de embeds, allowlist de archivos y config por usuario. Kick/ban siguen **apagados**. `raid` va **apagado** en `balanced`.
+
+| Opción | Default | Qué hace |
+| --- | --- | --- |
+| `replies` | **on**, 6 / 8s | Demasiadas **respuestas** seguidas. |
+| `blank` | **on** | Mensajes vacíos o solo espacios. |
+| `embeds` | **on**, 6 | Demasiados embeds en un mensaje. |
+| `raid` | **off** (`strict`: on) | Demasiados **usuarios distintos** escribiendo en el **mismo canal**. |
+| `files.allowedExtensions` | `[]` | Si lo rellenas, solo esas extensiones pasan. |
+| `emojis.maxInWindow` | `0` (off) | Tope de emojis+stickers entre varios mensajes. |
+| `ignoreNsfw` | `false` | Ignora canales NSFW. |
+| `graceMessages` | `0` | Los primeros N mensajes solo miran file/secret/link/word. |
+| `setUserConfig` | — | Overlay por usuario. |
+
+```js
+new AntiSpam(client, {
+  raid: { enabled: true, maxUsers: 8 },
+  files: { allowedExtensions: ["png", "jpg", "webp"] },
+  graceMessages: 2,
+  ignoreNsfw: true,
+});
+antispam.setUserConfig("ID_USER", { flood: { maxMessages: 2 } });
+```
 
 ## Novedades de 1.4.0
 
@@ -1124,6 +1195,7 @@ new AntiSpam(client, {
 
 ## Tabla de contenidos
 
+- [Novedades de 1.5.0](#novedades-de-150)
 - [Novedades de 1.4.0](#novedades-de-140)
 - [Novedades de 1.3.0](#novedades-de-130)
 - [Novedades de 1.2.0](#novedades-de-120)
@@ -1245,7 +1317,7 @@ Activa **Message Content Intent** en el [Portal de Discord](https://discord.com/
 
 1. Ignora bots, webhooks, mensajes de sistema, el dueño, administradores, prefijos de comando y tus listas de ignore.
 2. Guarda en **memoria** un historial corto por usuario y servidor. Sin base de datos.
-3. Pasa el mensaje por: archivos → secretos → palabras → flood → hop → echo → duplicados → adjuntos → enlaces → imágenes → menciones → zalgo → líneas → puntuación → spoilers → invisibles → cuentas → longitud → caps → emojis. El primero que dispare gana.
+3. Pasa el mensaje por: archivos → secretos → palabras → flood → hop → echo → duplicados → adjuntos → raid → replies → vacíos → embeds → enlaces → imágenes → menciones → zalgo → líneas → puntuación → spoilers → invisibles → cuentas → longitud → caps → emojis. El primero que dispare gana.
 4. Suma un strike (con caducidad) y aplica el castigo configurado.
 5. Las ediciones revisan **enlaces**, **menciones** y **palabras**.
 6. Los borrados pueden disparar **ghost** ping si `ghostPing.enabled` es true.
@@ -1461,6 +1533,7 @@ antispam.resetUser(guildId, userId);
 antispam.setGuildConfig(guildId, { flood: { maxMessages: 3 } });
 antispam.setChannelConfig(guildId, channelId, { flood: { maxMessages: 12 } });
 antispam.setRoleConfig(roleId, { emojis: { maxEmojis: 40 } });
+antispam.setUserConfig(userId, { flood: { maxMessages: 2 } });
 antispam.getStats();
 
 const incident = await antispam.analyze(message);
@@ -1540,6 +1613,10 @@ Espera unos segundos entre categorías.
 | Echo | La misma frase larga en 3 canales en 12s |
 | Invisible | Un mensaje con muchos espacios de ancho cero |
 | Adjuntos | 8+ archivos en 10 segundos |
+| Replies | Responder 6 veces en 8s |
+| Vacío | Un mensaje solo con espacios |
+| Embeds | 7+ embeds en un mensaje |
+| Raid | Activa `raid` y que 8 personas escriban en el mismo canal |
 | Edición | Manda `hola` y edítalo a `Free Nitro https://bit.ly/test` |
 
 En la terminal: `[detect] flood|duplicate|link|image|mention|caps|emoji|file|zalgo|newline|word|hop|punctuation|spoiler|ghost|secret|echo|invisible|attach`.

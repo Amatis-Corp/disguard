@@ -7,9 +7,11 @@ import {
 import { mergeDeep, resolveConfig } from "./defaults";
 import { accountDetector } from "./detectors/accounts";
 import { attachDetector } from "./detectors/attach";
+import { blankDetector } from "./detectors/blank";
 import { capsDetector } from "./detectors/caps";
 import { duplicateDetector } from "./detectors/duplicates";
 import { echoDetector } from "./detectors/echo";
+import { embedDetector } from "./detectors/embed";
 import { emojiDetector } from "./detectors/emojis";
 import { fileDetector } from "./detectors/files";
 import { floodDetector } from "./detectors/flood";
@@ -22,6 +24,8 @@ import { linkDetector } from "./detectors/links";
 import { mentionDetector } from "./detectors/mentions";
 import { newlineDetector } from "./detectors/newlines";
 import { punctuationDetector } from "./detectors/punctuation";
+import { raidDetector } from "./detectors/raid";
+import { replyDetector } from "./detectors/replies";
 import { secretDetector } from "./detectors/secrets";
 import { spoilerDetector } from "./detectors/spoilers";
 import { wordDetector } from "./detectors/words";
@@ -39,7 +43,7 @@ import type {
   MessageSnapshot,
   ResolvedConfig,
 } from "./types";
-import { normalizeText } from "./utils/normalize";
+import { countEmojis, normalizeText } from "./utils/normalize";
 
 const DETECTOR_TYPES: DetectorType[] = [
   "flood",
@@ -63,6 +67,10 @@ const DETECTOR_TYPES: DetectorType[] = [
   "echo",
   "secret",
   "attach",
+  "reply",
+  "blank",
+  "embed",
+  "raid",
 ];
 
 const ACTION_TYPES: ActionType[] = ["delete", "warn", "timeout", "kick", "ban", "addRole", "removeRole", "purge"];
@@ -118,6 +126,10 @@ export class AntiSpam {
       echoDetector,
       duplicateDetector,
       attachDetector,
+      raidDetector,
+      replyDetector,
+      blankDetector,
+      embedDetector,
       linkDetector,
       createImageDetector(this.store),
       mentionDetector,
@@ -246,6 +258,18 @@ export class AntiSpam {
     this.config = { ...this.config, roleOverrides: current };
   }
 
+  setUserConfig(userId: string, patch: DeepPartial<ResolvedConfig>): void {
+    const current = { ...this.config.userOverrides };
+    current[userId] = mergeDeep(current[userId] ?? {}, patch);
+    this.config = mergeDeep(this.config, { userOverrides: current });
+  }
+
+  clearUserConfig(userId: string): void {
+    const current = { ...this.config.userOverrides };
+    delete current[userId];
+    this.config = { ...this.config, userOverrides: current };
+  }
+
   getStrikes(guildId: string, userId: string): number {
     return this.store.getStrikes(
       guildId,
@@ -283,6 +307,9 @@ export class AntiSpam {
     const config = this.configFor(message.guild.id, message.channelId, message);
     const now = Date.now();
     const snapshot = this.toSnapshot(message, now);
+    if (!options.isEdit) {
+      this.store.pushChannelActivity(message.guild.id, message.channelId, message.author.id, now);
+    }
     const history = options.isEdit
       ? this.store.getHistory(message.guild.id, message.author.id, now, this.maxRetentionMs(config))
       : this.store.pushMessage(
@@ -294,8 +321,19 @@ export class AntiSpam {
 
     this.stats.analyzed += 1;
 
+    const uniqueUsersInChannel = this.store.countUniqueUsers(
+      message.guild.id,
+      message.channelId,
+      now,
+      config.raid.windowMs,
+    );
+
+    const graceOnly: DetectorType[] = ["file", "secret", "link", "word"];
+    const inGrace = config.graceMessages > 0 && history.length <= config.graceMessages;
+
     const detectors = this.orderedDetectors(config).filter((detector) => {
       if (config.disabledDetectors.includes(detector.type)) return false;
+      if (inGrace && !graceOnly.includes(detector.type)) return false;
       if (options.isEdit) {
         return (
           detector.type === "link" ||
@@ -316,6 +354,7 @@ export class AntiSpam {
           history,
           config,
           now,
+          uniqueUsersInChannel,
         });
         if (incident) return incident;
       } catch (error) {
@@ -422,6 +461,9 @@ export class AntiSpam {
     if (config.ignoreOlderThanMs > 0 && message.createdTimestamp) {
       if (Date.now() - message.createdTimestamp > config.ignoreOlderThanMs) return true;
     }
+    if (config.ignoreNsfw && "nsfw" in message.channel && Boolean((message.channel as { nsfw?: boolean }).nsfw)) {
+      return true;
+    }
     if (!message.guild) return true;
     if (config.ignored.guilds.includes(message.guild.id)) return true;
     if (config.ignored.channels.includes(message.channelId)) return true;
@@ -472,6 +514,9 @@ export class AntiSpam {
       }
     }
 
+    const userPatch = message?.author ? resolved.userOverrides[message.author.id] : undefined;
+    if (userPatch) resolved = mergeDeep(resolved, userPatch);
+
     if (channelId && resolved.channelOverrides[channelId]) {
       resolved = mergeDeep(resolved, resolved.channelOverrides[channelId]);
     }
@@ -506,6 +551,9 @@ export class AntiSpam {
       attachmentHashes: [],
       attachmentCount: message.attachments.size,
       mentionCount,
+      isReply: Boolean(message.reference?.messageId),
+      emojiCount: countEmojis(message.content) + message.stickers.size,
+      embedCount: message.embeds.length,
     };
   }
 
@@ -520,6 +568,9 @@ export class AntiSpam {
       config.echo.windowMs,
       config.attach.windowMs,
       config.mentions.windowMs,
+      config.replies.windowMs,
+      config.raid.windowMs,
+      config.emojis.windowMs,
     ];
     return Math.max(30_000, ...windows);
   }

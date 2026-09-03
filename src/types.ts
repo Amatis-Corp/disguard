@@ -21,7 +21,11 @@ export type DetectorType =
   | "invisible"
   | "echo"
   | "secret"
-  | "attach";
+  | "attach"
+  | "reply"
+  | "blank"
+  | "embed"
+  | "raid";
 
 export type Locale = "en" | "es";
 
@@ -73,6 +77,9 @@ export interface MessageSnapshot {
   attachmentHashes: string[];
   attachmentCount: number;
   mentionCount: number;
+  isReply: boolean;
+  emojiCount: number;
+  embedCount: number;
 }
 
 export interface IgnoreLists {
@@ -191,6 +198,9 @@ export interface EmojiConfig {
   enabled: boolean;
   maxEmojis: number;
   maxStickers: number;
+  /** Emojis + stickers across messages. 0 = off. */
+  maxInWindow: number;
+  windowMs: number;
   severity: Severity;
 }
 
@@ -198,6 +208,11 @@ export interface FileConfig {
   enabled: boolean;
   /** Extensiones bloqueadas, con o sin punto: `exe`, `.bat`. */
   blockedExtensions: string[];
+  /**
+   * If non-empty, only these extensions are allowed (allowlist).
+   * `blockedExtensions` still applies first.
+   */
+  allowedExtensions: string[];
   /** Max attachment size in bytes. 0 = unlimited. */
   maxBytes: number;
   severity: Severity;
@@ -307,6 +322,33 @@ export interface AttachConfig {
   severity: Severity;
 }
 
+export interface ReplyConfig {
+  enabled: boolean;
+  maxReplies: number;
+  windowMs: number;
+  severity: Severity;
+}
+
+export interface BlankConfig {
+  enabled: boolean;
+  severity: Severity;
+}
+
+export interface EmbedConfig {
+  enabled: boolean;
+  /** Embeds in a single message. */
+  maxEmbeds: number;
+  severity: Severity;
+}
+
+export interface RaidConfig {
+  enabled: boolean;
+  /** Distinct users posting in the same channel during the window. */
+  maxUsers: number;
+  windowMs: number;
+  severity: Severity;
+}
+
 export interface TimeoutPunishment {
   enabled: boolean;
   durationMs: number;
@@ -394,6 +436,10 @@ export interface ResolvedConfig {
   echo: EchoConfig;
   secrets: SecretConfig;
   attach: AttachConfig;
+  replies: ReplyConfig;
+  blank: BlankConfig;
+  embeds: EmbedConfig;
+  raid: RaidConfig;
   punishment: PunishmentConfig;
   checkEdits: boolean;
   /** Listen for `messageDelete` (ghost pings). */
@@ -403,11 +449,19 @@ export interface ResolvedConfig {
   ignorePinned: boolean;
   /** Skip messages older than this (reconnect replay). 0 = off. */
   ignoreOlderThanMs: number;
+  /** Skip messages in NSFW channels. */
+  ignoreNsfw: boolean;
+  /**
+   * First N messages from a user in a guild only run file/secret/link/word.
+   * 0 = off. Lets new talkers say hi without tripping flood.
+   */
+  graceMessages: number;
   cleanupIntervalMs: number;
   disabledDetectors: DetectorType[];
   detectorOrder: DetectorType[];
   channelOverrides: Record<string, DeepPartial<ResolvedConfig>>;
   roleOverrides: Record<string, DeepPartial<ResolvedConfig>>;
+  userOverrides: Record<string, DeepPartial<ResolvedConfig>>;
 }
 
 export interface AntiSpamStats {
@@ -438,6 +492,7 @@ export interface DetectorInput {
   history: MessageSnapshot[];
   config: ResolvedConfig;
   now: number;
+  uniqueUsersInChannel: number;
 }
 
 export interface Detector {

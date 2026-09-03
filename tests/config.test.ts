@@ -48,6 +48,18 @@ describe("resolveConfig", () => {
     expect(config.ignorePinned).toBe(false);
     expect(resolveConfig("strict").accounts.onlyWithLinks).toBe(true);
   });
+
+  it("incluye defaults 1.5.0", () => {
+    const config = resolveConfig("balanced");
+    expect(config.replies.maxReplies).toBe(6);
+    expect(config.blank.enabled).toBe(true);
+    expect(config.embeds.maxEmbeds).toBe(6);
+    expect(config.raid.enabled).toBe(false);
+    expect(config.graceMessages).toBe(0);
+    expect(config.ignoreNsfw).toBe(false);
+    expect(config.files.allowedExtensions).toEqual([]);
+    expect(resolveConfig("strict").raid.enabled).toBe(true);
+  });
 });
 
 describe("timeout scale", () => {
